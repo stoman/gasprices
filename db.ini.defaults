@@ -1,0 +1,7 @@
+[database]
+user=user
+passwd=passwd
+dbname=dbname
+host=localhost
+type=postgresql
+port=5432
