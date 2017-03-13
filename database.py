@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 import pandas as pd
 import sqlalchemy
 
@@ -31,12 +32,31 @@ class Database:
         self.meta = sqlalchemy.MetaData(bind=self.connection, reflect=True)
     
     def find_stations(self, place=None):
-        """Create a pandas dataframe containing all gas stations with the given properties"""
+        """Create a pandas dataframe containing all gas stations with the given properties.
+        
+        Keyword arguments:
+        place -- the city of the gas stations (default None)"""
         #construct query
         table = self.meta.tables["gas_station"]
         query = table.select()
         if place:
             query = query.where(table.c.place == place)
+        
+        #create pandas dataframe
+        return pd.read_sql(query, self.connection)
+        
+    def find_prices(self, stids=[], start=datetime.now() - timedelta(days=14), end=datetime.now()):
+        """Create a pandas dataframe containing all price changes with the given properties.
+        
+        Keyword arguments:
+        stids -- an iterable containing the ids of the gas stations (default [])
+        start -- the first update time to include in the price history (default datetime.now() - timedelta(days=14))
+        end -- the last update time to include in the price history (default datetime.now())"""
+        #construct query
+        table = self.meta.tables["gas_station_information_history"]
+        query = table.select(sqlalchemy.and_(
+            table.c.date >= start, table.c.date <= end, table.c.stid.in_(stids)
+        ))
         
         #create pandas dataframe
         return pd.read_sql(query, self.connection)
