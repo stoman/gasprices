@@ -1,3 +1,4 @@
+import pandas as pd
 import sqlalchemy
 
 class Database:
@@ -6,8 +7,17 @@ class Database:
     connection = None
     meta = None
     
-    def __init__(self, dbconfig):
-        """Connect to the database using a config object containing the database credentials"""
+    def __init__(self, dbconfig=None):
+        """Connect to the database using a config object containing the database credentials.
+        
+        If no `configdb` argument is given we use the credentials from the file `db.ini`"""
+        
+        #find database credentials
+        if not dbconfig:
+            dbconfig = SafeConfigParser()
+            dbconfig.read("db.ini")
+        
+        #connect to database
         self.connection = sqlalchemy.create_engine(
             "{type}://{user}:{passwd}@{host}:{port}/{dbname}".format(
                 type=dbconfig.get("database", "type"),
@@ -21,18 +31,15 @@ class Database:
         self.meta = sqlalchemy.MetaData(bind=self.connection, reflect=True)
     
     def find_stations(self, place=None):
-        """Find the ids of all gas stations with the given properties"""
+        """Create a pandas dataframe containing all gas stations with the given properties"""
         #construct query
         table = self.meta.tables["gas_station"]
         query = table.select()
         if place:
             query = query.where(table.c.place == place)
         
-        #iterate over results
-        stations = []
-        for station in self.connection.execute(query):
-            stations.append(station["id"])
-        return stations
+        #create pandas dataframe
+        return pd.read_sql(query, self.connection)
         
     def __exit__(self, exc_type, exc_value, traceback):
         """Close connection to the database"""
@@ -41,7 +48,5 @@ class Database:
 #sample usage    
 from ConfigParser import SafeConfigParser
 if __name__ == "__main__":
-    dbconfig = SafeConfigParser()
-    dbconfig.read("db.ini")
-    db = Database(dbconfig=dbconfig)
-    print db.find_stations(place="Kassel")
+    db = Database()
+    print db.find_stations(place="Kassel").describe()
