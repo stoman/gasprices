@@ -3,16 +3,22 @@ import pandas as pd
 import sqlalchemy
 
 class Database:
-    """A class representing the connection to the gas prices database"""
+    """
+    A class representing the connection to the gas prices database
+    """
     
     connection = None
     meta = None
     
     def __init__(self, dbconfig=None):
-        """Connect to the database using a config object containing the database credentials.
+        """
+        Connect to the database using a config object containing the database credentials.
         
-        If no `configdb` argument is given we use the credentials from the file `db.ini`"""
-        
+        If no `configdb` argument is given we use the credentials from the file `db.ini`
+
+        Keyword arguments:
+        configdb -- a `SafeConfigParser` containing database credentials (default None)
+        """
         #find database credentials
         if not dbconfig:
             dbconfig = SafeConfigParser()
@@ -32,10 +38,12 @@ class Database:
         self.meta = sqlalchemy.MetaData(bind=self.connection, reflect=True)
     
     def find_stations(self, place=None):
-        """Create a pandas dataframe containing all gas stations with the given properties.
+        """
+        Create a pandas dataframe containing all gas stations with the given properties.
         
         Keyword arguments:
-        place -- the city of the gas stations (default None)"""
+        place -- the city of the gas stations (default None)
+        """
         #construct query
         table = self.meta.tables["gas_station"]
         query = table.select()
@@ -46,12 +54,14 @@ class Database:
         return pd.read_sql(query, self.connection)
         
     def find_prices(self, stids=[], start=datetime.now() - timedelta(days=14), end=datetime.now()):
-        """Create a pandas dataframe containing all price changes with the given properties.
+        """
+        Create a pandas dataframe containing all price changes with the given properties.
         
         Keyword arguments:
         stids -- an iterable containing the ids of the gas stations (default [])
         start -- the first update time to include in the price history (default datetime.now() - timedelta(days=14))
-        end -- the last update time to include in the price history (default datetime.now())"""
+        end -- the last update time to include in the price history (default datetime.now())
+        """
         #construct query
         table = self.meta.tables["gas_station_information_history"]
         query = table.select(sqlalchemy.and_(
@@ -62,11 +72,13 @@ class Database:
         return pd.read_sql(query, self.connection)
         
     def __exit__(self, exc_type, exc_value, traceback):
-        """Close connection to the database"""
+        """
+        Close connection to the database
+        """
         self.connection.close()
 
 #sample usage    
 from ConfigParser import SafeConfigParser
 if __name__ == "__main__":
     db = Database()
-    print db.find_stations(place="Kassel").describe()
+    print(db.find_stations(place="Kassel").describe())

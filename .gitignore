@@ -1,5 +1,6 @@
 *~
 data
+venv
 .ipynb_checkpoints
 *.pyc
 *.ini

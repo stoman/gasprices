@@ -1,20 +1,27 @@
 from datetime import datetime, timedelta
-from database import Database
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sbn
 
+from database import Database
+
 class Plots:
-    """A class for creating all kinds of plots"""
+    """
+    A class for creating all kinds of plots
+    """
     
     db = None
     
     def __init__(self):
-        """Connect to database"""
+        """
+        Connect to database
+        """
         self.db = Database()
         
     def brands(self):
-        """Plot a pie chart of gas station brands"""
+        """
+        Plot a pie chart of gas station brands
+        """
         #create pandas dataframe
         brands = self.db.find_stations().groupby("brand")["brand"].count()
         brands = brands.rename("Count of Gas Stations", inPlace=True)
@@ -31,8 +38,9 @@ class Plots:
         fig.gca().add_artist(plt.Circle((0, 0), 0.7, fc="white"))
         plt.show()
     
-    def prices(self, stids=[], start=datetime.now() - timedelta(days=14), end=datetime.now(), title="", nightstart=22, nightend=6):
-        """Plot a line chart containing the average price history of some gas stations.
+    def prices(self, stids=[], start=datetime.now() - timedelta(days=14), end=datetime.now(), title="", nightstart=22, nightend=6, fuel_types=["diesel"]):
+        """
+        Plot a line chart containing the average price history of some gas stations.
         
         Keyword arguments:
         stids -- an iterable containing the ids of the gas stations (default [])
@@ -41,6 +49,7 @@ class Plots:
         title -- title of the diagram (default "")
         nightstart -- first hour of the day to highlight as night time (default 22)
         nightend -- last hour of the day to highlight as night time (default 6)
+        fuel_types -- a list of fuel types to plot (default ["diesel"])
         """
                                  
         #query database for price history
@@ -48,20 +57,18 @@ class Plots:
 
         #fix me: initial values
         current_prices = pd.DataFrame(
-            [{"stid": stid, "diesel": .0, "e5": .0, "e10": .0} for stid in stids]
+            [{"stid": stid}.update({fuel_type: .0 for fuel_type in fuel_types}) for stid in stids]
         ).set_index("stid")
 
         #save mean prices
         mean_prices = pd.DataFrame({
-            "date": pd.Series(dtype="datetime64[ns]"),
-            "diesel": pd.Series(dtype="float64"),
-            "e5": pd.Series(dtype="float64"),
-            "e10": pd.Series(dtype="float64")
-        }).set_index("date")
+                "date": pd.Series(dtype="datetime64[ns]")
+            }.update({fuel_type: pd.Series(dtype="float64") for fuel_type in fuel_types})
+        ).set_index("date")
     
         #read price changes
-        for idx, change in history.iterrows():
-            for fuel_type in ["diesel", "e5", "e10"]:
+        for _, change in history.iterrows():
+            for fuel_type in fuel_types:
                 current_prices.loc[change["stid"]][fuel_type] = change[fuel_type]
                 mean_prices.loc[change["date"]] = current_prices.mean().set_value("date", change["date"])
     
