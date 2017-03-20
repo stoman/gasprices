@@ -38,7 +38,7 @@ class Plots:
         fig.gca().add_artist(plt.Circle((0, 0), 0.7, fc="white"))
         plt.show()
     
-    def prices(self, stids=[], start=datetime.now() - timedelta(days=14), end=datetime.now() - timedelta(days=13), title="", nightstart=22, nightend=6, fuel_types=["diesel"]):
+    def prices(self, stids=[], start=datetime.now() - timedelta(days=14), end=datetime.now(), title="", nightstart=22, nightend=6, fuel_types=["diesel", "e5", "e10"]):
         """
         Plot a line chart containing the average price history of some gas stations.
         
@@ -49,16 +49,14 @@ class Plots:
         title -- title of the diagram (default "")
         nightstart -- first hour of the day to highlight as night time (default 22)
         nightend -- last hour of the day to highlight as night time (default 6)
-        fuel_types -- a list of fuel types to plot (default ["diesel"])
+        fuel_types -- a list of fuel types to plot (default ["diesel", "e5", "e10"])
         """
                                  
-        #query database for price history
-        history = self.db.find_prices(stids=stids, start=start, end=end)
+        #query for initial values
+        current_prices = self.db.find_prices(stids, time=start, fuel_types=fuel_types)
 
-        #fix me: initial values
-        current_prices = pd.DataFrame({"stid": stids}).set_index("stid")
-        for fuel_type in fuel_types:
-            current_prices[fuel_type] = .0
+        #query database for price history
+        history = self.db.find_price_history(stids=stids, start=start, end=end)
 
         #save mean prices
         mean_prices = pd.DataFrame({"date": pd.Series(dtype="datetime64[ns]")}).set_index("date")
