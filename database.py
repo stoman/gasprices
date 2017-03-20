@@ -1,6 +1,9 @@
 from datetime import datetime, timedelta
 import pandas as pd
 import sqlalchemy
+import urllib
+import io
+import gzip
 
 class Database:
     """
@@ -76,9 +79,21 @@ class Database:
         Close connection to the database
         """
         self.connection.close()
+        
+    def import_database(self, url="https://creativecommons.tankerkoenig.de/history/history.dump.gz"):
+        """
+        Imports a gzipped database file from an external server. Make sure you trust this server!
+        
+        Keyword arguments:
+        url -- the url of the file to load (default "https://creativecommons.tankerkoenig.de/history/history.dump.gz")
+        """
+        response = urllib.request.urlopen(url)
+        compressed_file = io.BytesIO(response.read())
+        decompressed_file = gzip.GzipFile(fileobj=compressed_file)
+        self.connection.execute(decompressed_file.read())
 
 #sample usage    
-from ConfigParser import SafeConfigParser
+from configparser import SafeConfigParser
 if __name__ == "__main__":
     db = Database()
     print(db.find_stations(place="Kassel").describe())

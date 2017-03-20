@@ -29,7 +29,7 @@ class Plots:
         commonbrands.set_value("Others", brands.sum() - commonbrands.sum())
         
         #create plot
-        ax = commonbrands.sort_values().plot(
+        commonbrands.sort_values().plot(
             kind="pie",
             title="Number of Gas Stations by Brand",
             autopct="%1.0f%%"
@@ -38,13 +38,13 @@ class Plots:
         fig.gca().add_artist(plt.Circle((0, 0), 0.7, fc="white"))
         plt.show()
     
-    def prices(self, stids=[], start=datetime.now() - timedelta(days=14), end=datetime.now(), title="", nightstart=22, nightend=6, fuel_types=["diesel"]):
+    def prices(self, stids=[], start=datetime.now() - timedelta(days=14), end=datetime.now() - timedelta(days=13), title="", nightstart=22, nightend=6, fuel_types=["diesel"]):
         """
         Plot a line chart containing the average price history of some gas stations.
         
         Keyword arguments:
         stids -- an iterable containing the ids of the gas stations (default [])
-        start -- the first update time to include in the price history (default datetime.now() - timedel
+        start -- the first update time to include in the price history (default datetime.now() - timedelta(days=14)
         end -- the last update time to include in the price history (default datetime.now())
         title -- title of the diagram (default "")
         nightstart -- first hour of the day to highlight as night time (default 22)
@@ -56,22 +56,24 @@ class Plots:
         history = self.db.find_prices(stids=stids, start=start, end=end)
 
         #fix me: initial values
-        current_prices = pd.DataFrame(
-            [{"stid": stid}.update({fuel_type: .0 for fuel_type in fuel_types}) for stid in stids]
-        ).set_index("stid")
+        current_prices = pd.DataFrame({"stid": stids}).set_index("stid")
+        for fuel_type in fuel_types:
+            current_prices[fuel_type] = .0
 
         #save mean prices
-        mean_prices = pd.DataFrame({
-                "date": pd.Series(dtype="datetime64[ns]")
-            }.update({fuel_type: pd.Series(dtype="float64") for fuel_type in fuel_types})
-        ).set_index("date")
+        mean_prices = pd.DataFrame({"date": pd.Series(dtype="datetime64[ns]")}).set_index("date")
+        for fuel_type in fuel_types:
+            mean_prices[fuel_type] = .0
     
         #read price changes
         for _, change in history.iterrows():
             for fuel_type in fuel_types:
                 current_prices.loc[change["stid"]][fuel_type] = change[fuel_type]
-                mean_prices.loc[change["date"]] = current_prices.mean().set_value("date", change["date"])
-    
+                if change["date"] in mean_prices.index:
+                    mean_prices.update(pd.DataFrame(current_prices.mean().set_value("date", change["date"])))
+                else:
+                    mean_prices.loc[change["date"]] = current_prices.mean().set_value("date", change["date"])
+
         #create the plot
         ax = mean_prices.plot(drawstyle="steps", title=title)
         ax.set_ylabel("Price in 1/1000 Euros")
