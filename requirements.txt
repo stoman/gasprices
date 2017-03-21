@@ -2,5 +2,6 @@ configparser>=3.5.0
 matplotlib>=2.0.0
 pandas>=0.19.2
 psycopg2>=2.7.1
+pytz>=2016.10
 seaborn>=0.7.1
 sqlalchemy>=1.1.6

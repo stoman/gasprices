@@ -1,8 +1,8 @@
 from datetime import datetime, timedelta
 import pandas as pd
+import pytz
 import sqlalchemy
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.sql import select
 from sqlalchemy.sql.expression import func
 import urllib
 import io
@@ -62,14 +62,14 @@ class Database:
         #create pandas dataframe
         return pd.read_sql(query.statement, self.connection)
         
-    def find_price_history(self, stids, start=datetime.now() - timedelta(days=14), end=datetime.now()):
+    def find_price_history(self, stids, start=datetime.now(pytz.utc) - timedelta(days=14), end=datetime.now(pytz.utc)):
         """
         Create a pandas dataframe containing all price changes with the given properties.
         
         Keyword arguments:
         stids -- an iterable containing the ids of the gas stations
-        start -- the first update time to include in the price history (default datetime.now() - timedelta(days=14))
-        end -- the last update time to include in the price history (default datetime.now())
+        start -- the first update time to include in the price history (default datetime.now(pytz.utc) - timedelta(days=14))
+        end -- the last update time to include in the price history (default datetime.now(pytz.utc))
         """
         #construct query
         table = self.meta.tables["gas_station_information_history"]
