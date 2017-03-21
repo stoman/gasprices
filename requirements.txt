@@ -5,3 +5,4 @@ psycopg2>=2.7.1
 pytz>=2016.10
 seaborn>=0.7.1
 sqlalchemy>=1.1.6
+statsmodels>=0.8.0
