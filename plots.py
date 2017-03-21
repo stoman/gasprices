@@ -65,16 +65,16 @@ class Plots:
             mean_prices[fuel_type] = .0
     
         #read price changes
-        for _, change in history.iterrows():
+        for date, change in history.iterrows():
             for fuel_type in fuel_types:
                 #update price only if there is no obvious mistake
                 if change[fuel_type]:
                     current_prices.loc[change["stid"]][fuel_type] = change[fuel_type]
                 #insert or update row in mean prices
-                if change["date"] in mean_prices.index:
-                    mean_prices.update(pd.DataFrame(current_prices.mean().set_value("date", change["date"])))
+                if date in mean_prices.index:
+                    mean_prices.update(pd.DataFrame(current_prices.mean()))
                 else:
-                    mean_prices.loc[change["date"]] = current_prices.mean().set_value("date", change["date"])
+                    mean_prices.loc[date] = current_prices.mean()
 
 
         if end in mean_prices.index:
@@ -88,9 +88,9 @@ class Plots:
         ax.set_xlabel("Date")
     
         #highlight night times
-        mindate = history["date"].min()
+        mindate = history.index.min()
         startdate = datetime(mindate.year, mindate.month, mindate.day) - timedelta(days=1)
-        maxdate = history["date"].max()
+        maxdate = history.index.max()
         enddate = datetime(maxdate.year, maxdate.month, maxdate.day) + timedelta(days=1)
         while startdate < enddate:
             ax.axvspan(
@@ -111,10 +111,10 @@ if __name__ == "__main__":
     database = Database()
     
     #plot pie chart of brands
-    #plots.brands()
+    plots.brands()
     
     #plot prices in a city
     plots.prices(
-        stids=database.find_stations(place="Strausberg")["id"].tolist(),
+        stids=database.find_stations(place="Strausberg").index.tolist(),
         title="Fuel Prices in Strausberg"
     )

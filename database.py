@@ -40,7 +40,7 @@ class Database:
                 host=dbconfig.get("database", "host"),
                 port=dbconfig.get("database", "port"),
                 dbname=dbconfig.get("database", "dbname")
-            ), client_encoding='utf8'
+            ), client_encoding="utf8"
         )
         self.meta = sqlalchemy.MetaData(bind=self.connection, reflect=True)
         Session = sessionmaker(bind=self.connection)
@@ -60,7 +60,7 @@ class Database:
             query = query.filter(table.c.place == place)
         
         #create pandas dataframe
-        return pd.read_sql(query.statement, self.connection)
+        return pd.read_sql(query.statement, self.connection).set_index("id")
         
     def find_price_history(self, stids, start=datetime.now(pytz.utc) - timedelta(days=14), end=datetime.now(pytz.utc)):
         """
@@ -75,10 +75,12 @@ class Database:
         table = self.meta.tables["gas_station_information_history"]
         query = self.session.query(table).filter(sqlalchemy.and_(
             table.c.date >= start, table.c.date <= end, table.c.stid.in_(stids)
-        ))
+        )).order_by(table.c.date)
         
         #create pandas dataframe
-        return pd.read_sql(query.statement, self.connection)
+        df = pd.read_sql(query.statement, self.connection)
+        df["date"] = pd.to_datetime(df["date"], utc=True)
+        return df.set_index("date")
         
     def __exit__(self, exc_type, exc_value, traceback):
         """
