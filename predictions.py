@@ -2,11 +2,9 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import pytz
 import statsmodels.api as sm
 
 from database import Database
-from operator import length_hint
 
 class Predictions:
     """
@@ -22,6 +20,7 @@ class Predictions:
         self.db = Database()
         
     def predict_station(self, stid, fuel_type="diesel", start=datetime(2016, 5, 3, 0, 0, 0, 0), end=datetime(2017, 3, 19, 0, 0, 0, 0)):
+        
         #get historic price data from database
         history_compressed = self.db.find_price_history([stid], start=start, end=end)[fuel_type]
         history_compressed = history_compressed[history_compressed > 0]
@@ -38,33 +37,44 @@ class Predictions:
         
         #compute rolling average
         length_week = 7*24
-        trend = history.rolling(window=length_week).mean()
+        trend = history.rolling(window=length_week, center=True, min_periods=1).mean()
         res = (history - trend).dropna()
         weekly = [res[-length_week+i::-length_week].mean() for i in range(length_week)]
         seasonal = np.tile(weekly, 1 + len(history) // length_week)
         seasonal = seasonal[len(seasonal) - len(res):]
-        assert(len(seasonal) == len(res))
+        seasonal = pd.Series(seasonal, index=res.index)
         res -= seasonal
+        flatt_res = res.rolling(window=3, center=True, min_periods=1).mean()
         
         #plot time series
-        plt.subplot(5, 1, 1)
-        plt.plot(history)
-        plt.subplot(5, 1, 2)
-        plt.plot(trend)
-        plt.subplot(5, 1, 3)
-        plt.plot(history - trend)
-        plt.subplot(5, 1, 4)
-        plt.plot(seasonal)
-        plt.subplot(5, 1, 5)
-        plt.plot(res)
+        ax = plt.subplot(4, 1, 1)
+        plt.plot(history, label="Price History")
+        plt.plot(trend, label="Trend")
+        ax.legend(loc=1)
+        ax = plt.subplot(4, 1, 2)
+        plt.plot((history - trend), label="Price History without Trend")
+        plt.plot(seasonal, label="Weekly Schema")
+        ax.set_ylim([-100, 100])
+        ax.legend(loc=1)
+        ax = plt.subplot(4, 1, 3)
+        plt.plot(res, label="Residual")
+        plt.plot(flatt_res, label="Flattened Residual")
+        ax.set_ylim([-100, 100])
+        ax.legend(loc=1)
+        ax = plt.subplot(4, 1, 4)
+        plt.plot((res - flatt_res), label="Remaining Noise")
+        ax.set_ylim([-100, 100])
+        ax.legend(loc=1)
         plt.show()
         
-        #res = sm.tsa.seasonal_decompose(history, freq = 50)
-        #res.plot()
-        #plt.show()
+        res = sm.tsa.seasonal_decompose(history, freq=length_week)
+        res.plot()
+        plt.show()
     
 if __name__ == "__main__":
     Predictions().predict_station(
-        Database().find_stations(place="Strausberg").index[0]
+        Database().find_stations(place="Strausberg").index[0],
+        #start=datetime.now() - timedelta(weeks=7),
+        #end=datetime.now() - timedelta(weeks=1)
     )
     
