@@ -41,16 +41,22 @@ class Plots:
     
     def prices(self, stids=[], start=datetime.now(pytz.utc) - timedelta(days=14), end=datetime.now(pytz.utc), title="", nightstart=22, nightend=6, fuel_types=["diesel", "e5", "e10"]):
         """
-        Plot a line chart containing the average price history of some gas stations.
+        Plot a line chart containing the average price history of some gas
+        stations.
         
         Keyword arguments:
-        stids -- an iterable containing the ids of the gas stations (default [])
-        start -- the first update time to include in the price history (default datetime.now(pytz.utc) - timedelta(days=14)
-        end -- the last update time to include in the price history (default datetime.now(pytz.utc))
+        stids -- an iterable containing the ids of the gas stations (default
+        [])
+        start -- the first update time to include in the price history (default
+        datetime.now(pytz.utc) - timedelta(days=14)
+        end -- the last update time to include in the price history (default
+        datetime.now(pytz.utc))
         title -- title of the diagram (default "")
-        nightstart -- first hour of the day to highlight as night time (default 22)
+        nightstart -- first hour of the day to highlight as night time (default
+        22)
         nightend -- last hour of the day to highlight as night time (default 6)
-        fuel_types -- a list of fuel types to plot (default ["diesel", "e5", "e10"])
+        fuel_types -- a list of fuel types to plot (default ["diesel", "e5",
+        "e10"])
         """
                                  
         #query for initial values
@@ -116,5 +122,7 @@ if __name__ == "__main__":
     #plot prices in a city
     plots.prices(
         stids=database.find_stations(place="Strausberg").index.tolist(),
-        title="Fuel Prices in Strausberg"
+        title="Fuel Prices in Strausberg",
+        start=datetime.now(pytz.utc) - timedelta(weeks=4),
+        end=datetime.now(pytz.utc) - timedelta(weeks=1)
     )
