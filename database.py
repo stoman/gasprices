@@ -1,6 +1,5 @@
 from datetime import datetime, timedelta
 import pandas as pd
-import pytz
 import sqlalchemy
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql.expression import func
@@ -70,7 +69,7 @@ class Database:
         #create pandas dataframe
         return pd.read_sql(query.statement, self.connection).set_index("id")
         
-    def find_price_history(self, stids, start=datetime.now(pytz.utc) - timedelta(days=14), end=datetime.now(pytz.utc)):
+    def find_price_history(self, stids, start=datetime.now() - timedelta(days=14), end=datetime.now()):
         """
         Create a pandas dataframe containing all price changes with the given
         properties.
@@ -94,10 +93,10 @@ class Database:
         
         #create pandas dataframe
         df = pd.read_sql(query.statement, self.connection)
-        df["date"] = pd.to_datetime(df["date"], utc=True)
+        df["date"] = pd.to_datetime(df["date"])
         return df.set_index("date")
         
-    def find_price_hourly_history(self, stid, start=datetime.now(pytz.utc) - timedelta(days=14), end=datetime.now(pytz.utc), fuel_type="diesel"):
+    def find_price_hourly_history(self, stid, start=datetime.now() - timedelta(days=14), end=datetime.now(), fuel_type="diesel"):
         """
         Create a pandas series containing the hourly price at a given gas
         station.
@@ -124,7 +123,7 @@ class Database:
         history = pd.Series()
         index_compressed = 0
         for date in pd.date_range(start=start, end=end, freq="1H"):
-            if index_compressed < len(history_compressed) and history_compressed.index[index_compressed] <= date:
+            if index_compressed < len(history_compressed) and history_compressed.index[index_compressed].tz_localize(None) <= date:
                 current_price = history_compressed.iloc[index_compressed]
                 index_compressed += 1
             history[date] = current_price
@@ -200,4 +199,4 @@ class Database:
 from configparser import SafeConfigParser
 if __name__ == "__main__":
     db = Database()
-    print(db.find_stations(place="Kassel").describe())
+    print(db.find_stations(place="Kassel"))
