@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 import pandas as pd
+import pytz
 import seaborn as sbn
 
 from database import Database
@@ -38,7 +39,7 @@ class Plots:
         fig.gca().add_artist(plt.Circle((0, 0), 0.7, fc="white"))
         plt.show()
     
-    def prices(self, stids=[], start=datetime.now() - timedelta(days=14), end=datetime.now(), title="", nightstart=22, nightend=6, fuel_types=["diesel", "e5", "e10"]):
+    def prices(self, stids=[], start=pytz.utc.localize(datetime.utcnow()) - timedelta(days=14), end=pytz.utc.localize(datetime.utcnow()), title="", nightstart=22, nightend=6, fuel_types=["diesel", "e5", "e10"]):
         """
         Plot a line chart containing the average price history of some gas
         stations.
@@ -47,9 +48,9 @@ class Plots:
         stids -- an iterable containing the ids of the gas stations (default
         [])
         start -- the first update time to include in the price history (default
-        datetime.now(pytz.utc) - timedelta(days=14)
+        datetime.now() - timedelta(days=14)
         end -- the last update time to include in the price history (default
-        datetime.now(pytz.utc))
+        datetime.now())
         title -- title of the diagram (default "")
         nightstart -- first hour of the day to highlight as night time (default
         22)
@@ -77,9 +78,9 @@ class Plots:
                     current_prices.loc[change["stid"]][fuel_type] = change[fuel_type]
                 #insert or update row in mean prices
                 if date in mean_prices.index:
-                    mean_prices.update(pd.DataFrame(current_prices.mean().set_value("date", date.tz_localize(None))))
+                    mean_prices.update(pd.DataFrame(current_prices.mean().set_value("date", date)))
                 else:
-                    mean_prices.loc[date.tz_localize(None)] = current_prices.mean()
+                    mean_prices.loc[date] = current_prices.mean()
 
 
         if end in mean_prices.index:
@@ -122,6 +123,6 @@ if __name__ == "__main__":
     plots.prices(
         stids=database.find_stations(place="Strausberg").index.tolist(),
         title="Fuel Prices in Strausberg",
-        start=datetime.now() - timedelta(weeks=4),
-        end=datetime.now() - timedelta(weeks=1)
+        start=pytz.utc.localize(datetime.utcnow()) - timedelta(weeks=4),
+        end=pytz.utc.localize(datetime.utcnow()) - timedelta(weeks=1)
     )

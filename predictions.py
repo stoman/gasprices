@@ -1,8 +1,9 @@
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 import pandas as pd
-from statsmodels.tsa.arima_model import ARIMA
-from statsmodels.tsa.stattools import adfuller
+import pytz
+from statsmodels.tsa.arima_model import ARMA, AR
+from statsmodels.tsa.stattools import adfuller, acf, pacf
 import seaborn as sns
 
 from database import Database
@@ -53,7 +54,7 @@ def test_stationary(ts):
     for key, value in result[4].items():
         print("Critical Value for %s: %f" % (key, value))
 
-def predict(history, hours=4*7*24, trend=None, weekly=None, res=None):
+def predict(history, hours=2*4*7*24, trend=None, weekly=None, res=None):
     """
     This function splits a time series of gas prices into a trend, a weekly
     pattern, and a residual. The three returned time series sum up to the
@@ -69,16 +70,23 @@ def predict(history, hours=4*7*24, trend=None, weekly=None, res=None):
         trend, weekly, res = split_seasonal(history)
     
     trend_shift = (trend - trend.shift(1)).fillna(0.)
-    test_stationary(trend_shift)
     
-    trend_model = ARIMA(trend_shift, order=(2, 1, 2))
-    trend_results = trend_model.fit(disp=-1)
-    trend_res = trend_results.predict(trend.index.max(), trend.index.max() + timedelta(hours=hours))
+    print("Shifted Trend")
+    test_stationary(trend_shift)
+    #plt.plot(acf(trend_shift))
+    #plt.show()
+    
+    trend_model = AR(trend_shift)#, order=(2, 1, 2))
+    trend_results = trend_model.fit(maxlag=2*7*24, disp=-1)
+    trend_res = trend_results.predict(len(trend), len(trend) + hours)
     trend_pred = trend_res.cumsum() + trend[-1]
     
     res_pred = pd.Series(index=trend_pred.index).fillna(0.)
     
-    weekly_pred = pd.Series(index=trend_pred.index).fillna(0.)
+    print("Residual")
+    test_stationary(res)
+    
+    weekly_pred = pd.Series(index=trend_pred.index)
     length_week = 7*24
     for i in range(length_week):
         weekly_pred[i::length_week] = weekly[-length_week + i]
@@ -153,16 +161,14 @@ class Predictions:
         """
         self.db = Database()
         
-    def predict_station(self, stid, start=datetime(2016, 5, 3, 0, 0, 0, 0), end=datetime(2017, 3, 19, 0, 0, 0, 0), fuel_type="diesel"):
-        
-        history = self.db.find_price_hourly_history(stid, start, end, fuel_type)
+    def predict_station(self, stid, start=datetime(2016, 5, 3, 0, 0, 0, 0, pytz.utc), end=datetime(2017, 3, 19, 0, 0, 0, 0, pytz.utc), fuel_type="diesel"):
+        history = self.db.find_price_hourly_history(stid, start=start, end=end, fuel_type=fuel_type)
         plot_split_seasonal(history, predictions=True) 
         
     
 if __name__ == "__main__":
     Predictions().predict_station(
         Database().find_stations(place="Strausberg").index[0],
-        start=datetime(2017, 1, 19, 0, 0, 0, 0),
-        end=datetime(2017, 3, 19, 0, 0, 0, 0)
+        end=datetime(2017, 3, 19, 0, 0, 0, 0, pytz.utc)
     )
     
