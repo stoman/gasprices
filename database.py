@@ -94,7 +94,10 @@ class Database:
         
         #create pandas dataframe
         df = pd.read_sql(query.statement, self.connection)
-        df["date"] = [pytz.utc.localize(t) for t in pd.to_datetime(df["date"], utc=True)]
+        try:
+            df["date"] = [pytz.utc.localize(t) for t in pd.to_datetime(df["date"], utc=True)]
+        except:
+            df["date"] = [t.astimezone(pytz.utc) for t in pd.to_datetime(df["date"], utc=True)]
         return df.set_index("date")
         
     def find_price_hourly_history(self, stid, start=pytz.utc.localize(datetime.utcnow()) - timedelta(days=14), end=pytz.utc.localize(datetime.utcnow()), fuel_type="diesel"):

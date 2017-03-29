@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import pytz
 import seaborn as sbn
+sbn.set(font_scale=1.5)
 
 from database import Database
 
@@ -123,6 +124,6 @@ if __name__ == "__main__":
     plots.prices(
         stids=database.find_stations(place="Strausberg").index.tolist(),
         title="Fuel Prices in Strausberg",
-        start=pytz.utc.localize(datetime.utcnow()) - timedelta(weeks=4),
-        end=pytz.utc.localize(datetime.utcnow()) - timedelta(weeks=1)
+        start=pytz.utc.localize(datetime.utcnow()) - timedelta(weeks=5),
+        end=pytz.utc.localize(datetime.utcnow()) - timedelta(weeks=2)
     )
