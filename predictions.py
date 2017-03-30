@@ -67,8 +67,8 @@ class DateFeatures(base.BaseEstimator, base.TransformerMixin):
     
     def compute_row(self, t):
         r = {}
-        #r.update({"hour_%d" % i: t.hour == i for i in range(24)})
-        r.update({"dow_%d" % i: t.dayofweek == i for i in range(7)})
+        r.update({"hour%d" % i: t.hour == i for i in range(24)})
+        r.update({"dow%d" % i: t.dayofweek == i for i in range(7)})
         return r
 
     def transform(self, X):
@@ -76,15 +76,30 @@ class DateFeatures(base.BaseEstimator, base.TransformerMixin):
         matrix = DictVectorizer().fit_transform(features)
         return matrix.todense()
 
-def predict_trend(trend, index_pred, p=2*7*24):
+class MovingAverage(base.BaseEstimator, base.TransformerMixin):
+    def __init__(self, q):
+        self.q = q
+        
+    def fit(self, X, y):
+        return self
+    
+    def transform(self, X):
+#.rolling(window=length_week, center=True, min_periods=1).mean()
+        df = pd.DataFrame({"ma%05d" % 1: X["lag%05d" % 1]}, index=X.index)
+        for i in range(2, len(X.columns) + 1):
+            df["ma%05d" % i] = df["ma%05d" % (i - 1)] * (i - 1) / i + X["lag%05d" % i] / i
+        return df
+
+def predict_trend(trend, index_pred, p=7*24, q=7*24):
     #shift and lag trend
     trend_shift = (trend - trend.shift(1)).fillna(0.)
-    X = pd.DataFrame({"lag%05d" % i: trend_shift.shift(i) for i in range(1, p + 1)}).iloc[p:]
+    X = pd.DataFrame({"lag%05d" % i: trend_shift.shift(i) for i in range(1, p + 1)[::-1]}).iloc[p:]
     y = trend_shift.iloc[p:]
     
     #create pipeline
     features = FeatureUnion([
-        ("lagged", FunctionTransformer()),
+        ("ar", FunctionTransformer()),#identity function
+        ("ma", MovingAverage(q)),
         ("time", DateFeatures())
     ])
     pipeline = Pipeline([
@@ -92,12 +107,15 @@ def predict_trend(trend, index_pred, p=2*7*24):
         #("squares", PolynomialFeatures(degree=2)),
         ("regressor", LinearRegression(normalize=True))
     ]).fit(X, y)
+
+    print(features.fit_transform(X, y))
     
     #predict data
     trend_all = [y for y in trend_shift]#remove index, this is NOT in place
     for t in index_pred:
-        Xt = pd.DataFrame({"lag%05d" % i: trend_all[-i] for i in range(1, p + 1)}, index=[t])
+        Xt = pd.DataFrame({"lag%05d" % i: trend_all[-i] for i in range(1, p + 1)[::-1]}, index=[t])
         trend_all.append(pipeline.predict(Xt)[0])
+        print(t)
     trend_pred = pd.Series(trend_all[-len(index_pred):], index=index_pred)
     return trend[-1] + trend_pred.cumsum()
 
@@ -244,7 +262,7 @@ class Predictions:
 if __name__ == "__main__":
     Predictions().predict_station(
         Database().find_stations(place="Strausberg").index[0],
-        start=datetime(2017, 1, 1, 0, 0, 0, 0, pytz.utc),
+        #start=datetime(2017, 2, 1, 0, 0, 0, 0, pytz.utc),
         end=datetime(2017, 3, 19, 0, 0, 0, 0, pytz.utc)
     )
     
