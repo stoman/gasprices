@@ -1,17 +1,20 @@
 from datetime import datetime, timedelta
-import matplotlib.pyplot as plt
-import pandas as pd
+
 import pytz
-import seaborn as sbn
-sbn.set(font_scale=1.5)
 
 from database import Database
+import matplotlib.pyplot as plt
+import pandas as pd
+import seaborn as sbn
+
+
+sbn.set(font_scale=1.5)
+
 
 class Plots:
     """
     A class for creating all kinds of plots
     """
-    
     db = None
     
     def __init__(self):

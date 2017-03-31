@@ -1,12 +1,16 @@
+from configparser import SafeConfigParser
 from datetime import datetime, timedelta
-import pandas as pd
+import gzip
+import io
+import urllib
+
 import pytz
 import sqlalchemy
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql.expression import func
-import urllib
-import io
-import gzip
+
+import pandas as pd
+
 
 class Database:
     """
@@ -200,7 +204,6 @@ class Database:
         return pd.read_sql(query.statement, self.connection)[["stid"] + fuel_types].set_index("stid")
     
 #sample usage    
-from configparser import SafeConfigParser
 if __name__ == "__main__":
     db = Database()
     print(db.find_stations(place="Kassel"))
