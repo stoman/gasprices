@@ -4,6 +4,7 @@ import pytz
 from sklearn import base
 from sklearn.feature_extraction import DictVectorizer
 from sklearn.linear_model import LassoCV, LinearRegression
+from sklearn.metrics.regression import r2_score
 from sklearn.pipeline import Pipeline, FeatureUnion
 from sklearn.preprocessing import PolynomialFeatures, FunctionTransformer
 from statsmodels.tsa.arima_model import ARMA, AR
@@ -103,7 +104,7 @@ class MovingAverage(base.BaseEstimator, base.TransformerMixin):
             df["ma%05d" % i] = df["ma%05d" % (i - 1)] * (i - 1) / i + X["lag%05d" % i] / i
         return df
 
-def predict_ts(ts, index_pred, p=1*24, q=1*24):
+def predict_ts(ts, index_pred, p=2*24, q=2*24):
     """
     Predict a time series related to fuel prices. This could be used for the
     trend or the residual.
@@ -113,8 +114,8 @@ def predict_ts(ts, index_pred, p=1*24, q=1*24):
     index_pred -- the index of the values to predict. Indices are used for
     additional features, but assigned one after another independent of the
     time span between them.
-    p -- number of autoregression terms to consider (default 24) 
-    q -- number of moving average terms to consider (default 24) 
+    p -- number of autoregression terms to consider (default 2*24) 
+    q -- number of moving average terms to consider (default 2*24) 
     """
     #shift and lag ts
     ts_shift = (ts - ts.shift(1)).fillna(0.)
@@ -144,17 +145,22 @@ def predict_ts(ts, index_pred, p=1*24, q=1*24):
     ts_pred = pd.Series(ts_all[-len(index_pred):], index=index_pred)
     return ts[-1] + ts_pred.cumsum()
 
-def predict(history, hours=4*7*24, trend=None, weekly=None, res=None):
+def predict_split(history, hours=4*7*24, trend=None, weekly=None, res=None, p=2*24, q=2*24):
     """
-    This function splits a time series of gas prices into a trend, a weekly
-    pattern, and a residual. The three returned time series sum up to the
-    input time series.
+    This function predicts a time series of gas prices by splitting it into a
+    trend, a weekly pattern, and a residual and predicting each of them
+    individually.
 
     Keyword arguments:
     history -- the time series to split up
+    hours -- the number of time steps to predict (default 4*7*24)
+    trend, weekly, res -- the split of the time series as computed by
+    `split_seasonal` if already computed
+    p -- number of autoregression terms to consider (default 2*24) 
+    q -- number of moving average terms to consider (default 2*24) 
 
     Return value:
-    a tuple of three time series: trend, weekly, and residual
+    3 time series predicted: trend, weekly pattern, and residual
     """
     #split data if not already given
     if trend is None or weekly is None or res is None:
@@ -183,27 +189,45 @@ def predict(history, hours=4*7*24, trend=None, weekly=None, res=None):
     #plt.show()
 
     #predict the trend    
-    trend_pred = predict_ts(trend, index_pred)
+    trend_pred = predict_ts(trend, index_pred, p=p, q=q)
 
     #alternative: using AR from statsmodels    
     #trend_model = AR(trend_shift)
-    #trend_results = trend_model.fit(disp=-1, maxlag=7*24)
+    #trend_results = trend_model.fit(disp=-1, maxlag=p)
     #trend_res = trend_results.predict(len(trend), len(trend) + hours)
     #trend_pred = trend_res.cumsum() + trend[-1]
     
     #compute residual prediction
-    #res_pred = predict_ts(res, index_pred)
+    #res_pred = predict_ts(res, index_pred, p=p, q=q)
     
     #alternative: set zero
     res_pred = pd.Series(index=trend_pred.index).fillna(0.)
     
     #alternative: using AR from statsmodels    
     #res_model = AR(res)
-    #res_results = res_model.fit(disp=-1, maxlag=7*24)
+    #res_results = res_model.fit(disp=-1, maxlag=p)
     #res_pred = res_results.predict(len(res), len(res) + hours)
 
     #return result
     return trend_pred, weekly_pred, res_pred
+
+def predict(history, hours=4*7*24, p=2*24, q=2*24):
+    """
+    This function predicts a time series of gas prices.
+
+    Keyword arguments:
+    history -- the time series to split up
+    hours -- the number of time steps to predict (default 4*7*24)
+    p -- number of autoregression terms to consider (default 2*24) 
+    q -- number of moving average terms to consider (default 2*24) 
+
+    Return value:
+    the predicted time series
+    """
+    #compute predictions of the seasonal split and sum up
+    trend_pred, weekly_pred, res_pred = predict_split(history, hours=hours, p=p, q=q)
+    return trend_pred + weekly_pred + res_pred 
+    
 
 def plot_split_seasonal(history, predictions=False, prediction_length=4*7*24, cv=True):
     """
@@ -223,13 +247,13 @@ def plot_split_seasonal(history, predictions=False, prediction_length=4*7*24, cv
 
     #predict price history
     if predictions:
-        trend_pred, weekly_pred, res_pred = predict(
+        trend_pred, weekly_pred, res_pred = predict_split(
             history[:-prediction_length],
             trend=trend[:-prediction_length],
             weekly=weekly[:-prediction_length],
             res=res[:-prediction_length],
             hours=prediction_length
-        ) if cv else predict(
+        ) if cv else predict_split(
             history,
             trend=trend,
             weekly=weekly,
@@ -299,14 +323,27 @@ class Predictions:
         """
         self.db = Database()
         
-    def predict_station(self, stid, start=datetime(2016, 5, 3, 0, 0, 0, 0, pytz.utc), end=datetime(2017, 3, 19, 0, 0, 0, 0, pytz.utc), fuel_type="diesel"):
+    def predict_station(self, stid, start=datetime(2016, 5, 3, 0, 0, 0, 0, pytz.utc), end=datetime(2017, 3, 19, 0, 0, 0, 0, pytz.utc), fuel_type="diesel", prediction_length=4*7*24):
         history = self.db.find_price_hourly_history(stid, start=start, end=end, fuel_type=fuel_type)
-        plot_split_seasonal(history, predictions=True, cv=False) 
+        plot_split_seasonal(history, predictions=True, cv=True, prediction_length=prediction_length) 
         
+    def r2_prediction_score(self, stid, start=datetime(2016, 5, 3, 0, 0, 0, 0, pytz.utc), end=datetime(2017, 3, 19, 0, 0, 0, 0, pytz.utc), fuel_type="diesel", hours=4*7*24):
+        history = self.db.find_price_hourly_history(stid, start=start, end=end, fuel_type=fuel_type)
+        keys = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 24, 2*24, 3*24, 4*24, 5*24, 6*24, 7*24]
+        values = []
+        for t in keys:
+            values.append(r2_score(history[-hours:], predict(history[:-hours], hours=hours, p=t, q=t)))
+        return keys, values
     
 if __name__ == "__main__":
     Predictions().predict_station(
         Database().find_stations(place="Strausberg").index[0],
         #start=datetime(2017, 2, 1, 0, 0, 0, 0, pytz.utc),
-        end=datetime(2017, 2, 19, 0, 0, 0, 0, pytz.utc)
+        end=datetime(2017, 3, 19, 0, 0, 0, 0, pytz.utc)
     )
+#     plt.scatter(*Predictions().r2_prediction_score(
+#         Database().find_stations(place="Strausberg").index[0],
+#         #start=datetime(2017, 2, 1, 0, 0, 0, 0, pytz.utc),
+#         end=datetime(2017, 3, 19, 0, 0, 0, 0, pytz.utc)
+#     ))
+#     plt.show()
