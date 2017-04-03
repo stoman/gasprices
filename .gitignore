@@ -4,6 +4,7 @@ data
 venv
 .ipynb_checkpoints
 *.ini
+cache
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
