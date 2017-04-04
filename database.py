@@ -53,13 +53,14 @@ class Database:
         Session = sessionmaker(bind=self.connection)
         self.session = Session()
     
-    def find_stations(self, place=None):
+    def find_stations(self, place=None, stids=None):
         """
         Create a pandas dataframe containing all gas stations with the given
         properties.
         
         Keyword arguments:
         place -- the city of the gas stations (default None)
+        stids -- a list of station ids to filter for
         
         Return value:
         a pandas dataframe containing all information about the gas stations
@@ -70,6 +71,8 @@ class Database:
         query = self.session.query(table)
         if place:
             query = query.filter(table.c.place == place)
+        if stids:
+            query = query.filter(table.c.id.in_(stids))
         
         #create pandas dataframe
         return pd.read_sql(query.statement, self.connection).set_index("id")

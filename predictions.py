@@ -11,10 +11,13 @@ from statsmodels.tsa.arima_model import ARMA, AR
 from statsmodels.tsa.stattools import adfuller, acf, pacf
 
 from database import Database
+from holidays import HolidayTransformer
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sbn
+from pickletools import optimize
+from sklearn.gaussian_process.kernels import Hyperparameter
 
 
 sbn.set(font_scale=1.5)
@@ -104,212 +107,6 @@ class MovingAverage(base.BaseEstimator, base.TransformerMixin):
             df["ma%05d" % i] = df["ma%05d" % (i - 1)] * (i - 1) / i + X["lag%05d" % i] / i
         return df
 
-def predict_ts(ts, index_pred, p=2*24, q=2*24):
-    """
-    Predict a time series related to fuel prices. This could be used for the
-    trend or the residual.
-    
-    Keyword arguments:
-    ts -- a time series to predict
-    index_pred -- the index of the values to predict. Indices are used for
-    additional features, but assigned one after another independent of the
-    time span between them.
-    p -- number of autoregression terms to consider (default 2*24) 
-    q -- number of moving average terms to consider (default 2*24) 
-    """
-    #shift and lag ts
-    ts_shift = (ts - ts.shift(1)).fillna(0.)
-    X = pd.DataFrame({"lag%05d" % i: ts_shift.shift(i) for i in range(1, p + 1)[::-1]}).iloc[p:]
-    y = ts_shift.iloc[p:]
-    
-    #create pipeline
-    features = FeatureUnion([
-        ("ar", FunctionTransformer()),#identity function
-        ("ma", MovingAverage(q)),
-        ("time", DateFeatures())
-    ])
-    pipeline = Pipeline([
-        ("features", features),
-        #("squares", PolynomialFeatures(degree=2)),
-        ("regressor", LinearRegression(normalize=True))
-    ]).fit(X, y)
-
-    print(features.fit_transform(X, y))
-    
-    #predict data
-    ts_all = [y for y in ts_shift]#remove index, this is NOT in place
-    for t in index_pred:
-        Xt = pd.DataFrame({"lag%05d" % i: ts_all[-i] for i in range(1, p + 1)[::-1]}, index=[t])
-        ts_all.append(pipeline.predict(Xt)[0])
-        print(t)
-    ts_pred = pd.Series(ts_all[-len(index_pred):], index=index_pred)
-    return ts[-1] + ts_pred.cumsum()
-
-def predict_split(history, hours=4*7*24, trend=None, weekly=None, res=None, p=2*24, q=2*24):
-    """
-    This function predicts a time series of gas prices by splitting it into a
-    trend, a weekly pattern, and a residual and predicting each of them
-    individually.
-
-    Keyword arguments:
-    history -- the time series to split up
-    hours -- the number of time steps to predict (default 4*7*24)
-    trend, weekly, res -- the split of the time series as computed by
-    `split_seasonal` if already computed
-    p -- number of autoregression terms to consider (default 2*24) 
-    q -- number of moving average terms to consider (default 2*24) 
-
-    Return value:
-    3 time series predicted: trend, weekly pattern, and residual
-    """
-    #split data if not already given
-    if trend is None or weekly is None or res is None:
-        trend, weekly, res = split_seasonal(history)
-    
-    #create index for prediction time series
-    index_pred = pd.date_range(
-        start=history.index.max() + timedelta(hours=1),
-        end=history.index.max() + timedelta(hours=hours),
-        freq="1H",
-        tz=pytz.utc
-    )
-    
-    #compute weekly prediction
-    weekly_pred = pd.Series(index=index_pred)
-    length_week = 7*24
-    for i in range(length_week):
-        weekly_pred[i::length_week] = weekly[-length_week + i]
-
-    #Analyze trend
-    #trend_shift = (trend - trend.shift(1)).fillna(0.)
-    #print("Shifted Trend")
-    #test_stationary(trend_shift)
-    #plot acf to debug
-    #plt.plot(acf(trend_shift))
-    #plt.show()
-
-    #predict the trend    
-    trend_pred = predict_ts(trend, index_pred, p=p, q=q)
-
-    #alternative: using AR from statsmodels    
-    #trend_model = AR(trend_shift)
-    #trend_results = trend_model.fit(disp=-1, maxlag=p)
-    #trend_res = trend_results.predict(len(trend), len(trend) + hours)
-    #trend_pred = trend_res.cumsum() + trend[-1]
-    
-    #compute residual prediction
-    #res_pred = predict_ts(res, index_pred, p=p, q=q)
-    
-    #alternative: set zero
-    res_pred = pd.Series(index=trend_pred.index).fillna(0.)
-    
-    #alternative: using AR from statsmodels    
-    #res_model = AR(res)
-    #res_results = res_model.fit(disp=-1, maxlag=p)
-    #res_pred = res_results.predict(len(res), len(res) + hours)
-
-    #return result
-    return trend_pred, weekly_pred, res_pred
-
-def predict(history, hours=4*7*24, p=2*24, q=2*24):
-    """
-    This function predicts a time series of gas prices.
-
-    Keyword arguments:
-    history -- the time series to split up
-    hours -- the number of time steps to predict (default 4*7*24)
-    p -- number of autoregression terms to consider (default 2*24) 
-    q -- number of moving average terms to consider (default 2*24) 
-
-    Return value:
-    the predicted time series
-    """
-    #compute predictions of the seasonal split and sum up
-    trend_pred, weekly_pred, res_pred = predict_split(history, hours=hours, p=p, q=q)
-    return trend_pred + weekly_pred + res_pred 
-    
-
-def plot_split_seasonal(history, predictions=False, prediction_length=4*7*24, cv=True):
-    """
-    This function plots an overview over the seasonal split of a history of gas
-    prices as computed by `split_seasonal`.
-    
-    Keyword arguments:
-    history -- the time series to split up and visualize
-    predictions -- whether to plot predictions too (default False)
-    prediction_length -- number of time steps to predict. This is only
-    effective if `predictions` is set to `True` (default 4*7*24)
-    cv -- whether to predict data that is known and can be cross-validated
-    (default True)   
-    """
-    #split price history
-    trend, weekly, res = split_seasonal(history)
-
-    #predict price history
-    if predictions:
-        trend_pred, weekly_pred, res_pred = predict_split(
-            history[:-prediction_length],
-            trend=trend[:-prediction_length],
-            weekly=weekly[:-prediction_length],
-            res=res[:-prediction_length],
-            hours=prediction_length
-        ) if cv else predict_split(
-            history,
-            trend=trend,
-            weekly=weekly,
-            res=res,
-            hours=prediction_length
-        )
-        history_pred = trend_pred + weekly_pred + res_pred
-        
-        #print quality of predictions
-        #prediction_error = history[-prediction_length:] - history_pred
-        #print("Mean absolute prediction error %f" % prediction_error.abs().mean())
-
-    #run Dickey-Fuller test for debugging
-    #print("History Without Trend")
-    #test_stationary(history - trend)
-    #print("Residual")
-    #test_stationary(res)
-
-    #plot given time series
-    palette = sbn.color_palette(n_colors=6)
-    ax = plt.subplot(3, 1, 1) 
-    plt.plot(history, label="Price History", color=palette[1])
-    plt.plot(trend, label="Trend", color=palette[2])
-    if predictions:
-        ax.axvline(history_pred.index[0])
-        plt.plot(history_pred, linestyle="dashed", color=palette[1])
-        plt.plot(trend_pred, linestyle="dashed", color=palette[2])
-    ax.legend(loc=1)
-        
-    ax = plt.subplot(3, 1, 2)
-    plt.plot(history - trend, label="Price History without Trend", color=palette[3])
-    plt.plot(weekly, label="Weekly Pattern", color=palette[4])
-    if predictions:
-        ax.axvline(history_pred.index[0])
-        plt.plot(history_pred - trend_pred, linestyle="dashed", color=palette[3])
-        plt.plot(weekly_pred, linestyle="dashed", color=palette[4])
-    ax.set_ylim([-100, 100])
-    ax.legend(loc=1)
-
-    ax = plt.subplot(3, 1, 3)
-    plt.plot(res, label="Residual", color=palette[5])
-    if predictions:
-        ax.axvline(history_pred.index[0])
-        plt.plot(res_pred, linestyle="dashed", color=palette[5])
-    ax.set_ylim([-100, 100])
-    ax.legend(loc=1)
-
-    #the statsmodels module does it like this:
-    #import statsmodels.api as sm
-    #res = sm.tsa.seasonal_decompose(history, freq=7*24)
-    #res.plot()
-    #plt.show()
-
-    #show plots
-    plt.show()
-
 class Predictions:
     """
     A class for predicting gas prices
@@ -323,19 +120,231 @@ class Predictions:
         """
         self.db = Database()
         
-    def predict_station(self, stid, start=datetime(2016, 5, 3, 0, 0, 0, 0, pytz.utc), end=datetime(2017, 3, 19, 0, 0, 0, 0, pytz.utc), fuel_type="diesel", prediction_length=4*7*24):
-        history = self.db.find_price_hourly_history(stid, start=start, end=end, fuel_type=fuel_type)
-        plot_split_seasonal(history, predictions=True, cv=True, prediction_length=prediction_length) 
+        #set default parameters
+        self.default_hyperparameters = {
+            "p": 2*24,
+            "q": 2*24,
+        }
         
-    def r2_prediction_score(self, stid, start=datetime(2016, 5, 3, 0, 0, 0, 0, pytz.utc), end=datetime(2017, 3, 19, 0, 0, 0, 0, pytz.utc), fuel_type="diesel", hours=4*7*24):
+    def predict_station(self, stid, start=datetime(2016, 5, 3, 0, 0, 0, 0, pytz.utc), end=datetime(2017, 3, 19, 0, 0, 0, 0, pytz.utc), fuel_type="diesel", prediction_length=7*24):
+        history = self.db.find_price_hourly_history(stid, start=start, end=end, fuel_type=fuel_type)
+        station = self.db.find_stations(stids=[stid])
+        self.plot_split_seasonal(
+            history,
+            self.get_feature_pipeline(zipcode=station.iloc[0]["post_code"]),
+            predictions=True,
+            cv=True,
+            prediction_length=prediction_length
+        ) 
+        
+    def r2_prediction_score(self, stid, start=datetime(2016, 5, 3, 0, 0, 0, 0, pytz.utc), end=datetime(2017, 3, 19, 0, 0, 0, 0, pytz.utc), fuel_type="diesel", prediction_length=7*24):
         history = self.db.find_price_hourly_history(stid, start=start, end=end, fuel_type=fuel_type)
         keys = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 24, 2*24, 3*24, 4*24, 5*24, 6*24, 7*24]
         values = []
         for t in keys:
-            values.append(r2_score(history[-hours:], predict(history[:-hours], hours=hours, p=t, q=t)))
+            values.append(r2_score(history[-prediction_length:], self.predict(history[:-prediction_length], prediction_length=prediction_length, p=t, q=t)))
         return keys, values
     
+    def get_feature_pipeline(self, zipcode, q=2*24):
+        return FeatureUnion([
+            ("auto-regression", FunctionTransformer()),#identity function for first p features
+            ("moving_average", MovingAverage(q)),
+            ("time", DateFeatures()),
+            ("holidays", HolidayTransformer(zipcode=zipcode))
+        ])
+        
+    def predict_split(self, history, features, prediction_length=7*24, hyperparameters={}):
+        """
+        This function predicts a time series of gas prices by splitting it into a
+        trend, a weekly pattern, and a residual and then applying a feature
+        pipeline and predicting each of them individually.
+    
+        Keyword arguments:
+        history -- the time series to split up
+        features -- a pipeline to transform the features before predicting them
+        prediction_length -- the number of time steps to predict (default 7*24)
+        hyperparameters -- values used for the prediction model (default {}) 
+    
+        Return value:
+        3 time series predicted: trend, weekly pattern, and residual
+        """
+        #split data
+        trend, weekly, res = split_seasonal(history)
+        
+        #create index for prediction time series
+        index_pred = pd.date_range(
+            start=history.index.max() + timedelta(hours=1),
+            end=history.index.max() + timedelta(hours=prediction_length),
+            freq="1H",
+            tz=pytz.utc
+        )
+        
+        #compute weekly prediction
+        weekly_pred = pd.Series(index=index_pred)
+        length_week = 7*24
+        for i in range(length_week):
+            weekly_pred[i::length_week] = weekly[-length_week + i]
+    
+        #Analyze trend
+        #trend_shift = (trend - trend.shift(1)).fillna(0.)
+        #print("Shifted Trend")
+        #test_stationary(trend_shift)
+        #plot acf to debug
+        #plt.plot(acf(trend_shift))
+        #plt.show()
+    
+        #predict the trend    
+        trend_pred = self.predict_ts(trend, features, index_pred, hyperparameters=hyperparameters)
+    
+        #alternative: using AR from statsmodels    
+        #trend_model = AR(trend_shift)
+        #trend_results = trend_model.fit(disp=-1, maxlag=p)
+        #trend_res = trend_results.predict(len(trend), len(trend) + prediction_length)
+        #trend_pred = trend_res.cumsum() + trend[-1]
+        
+        #compute residual prediction
+        #res_pred = self.predict_ts(res, features, index_pred, hyperparameters=hyperparameters)
+        
+        #alternative: set zero
+        res_pred = pd.Series(index=trend_pred.index).fillna(0.)
+        
+        #alternative: using AR from statsmodels    
+        #res_model = AR(res)
+        #res_results = res_model.fit(disp=-1, maxlag=p)
+        #res_pred = res_results.predict(len(res), len(res) + prediction_length)
+    
+        #return result
+        return trend_pred, weekly_pred, res_pred
+    
+    def predict(self, history, features, prediction_length=4*7*24, hyperparameters={}):
+        """
+        This function predicts a time series of gas prices.
+    
+        Keyword arguments:
+        history -- the time series to split up
+        features -- a pipeline to transform the features before predicting them
+        prediction_length -- the number of time steps to predict (default 4*7*24)
+        hyperparameters -- values used for the prediction model (default {}) 
+    
+        Return value:
+        the predicted time series
+        """
+        #compute predictions of the seasonal split and sum up
+        trend_pred, weekly_pred, res_pred = self.predict_split(history, features, prediction_length, hyperparameters=hyperparameters)
+        return trend_pred + weekly_pred + res_pred     
+    
+    def predict_ts(self, ts, features, index_pred, hyperparameters={}):
+        """
+        Predict a time series related to fuel prices. This could be used for the
+        trend or the residual.
+        
+        Keyword arguments:
+        ts -- a time series to predict
+        features -- a pipeline to transform the features before predicting them
+        index_pred -- the index of the values to predict. Indices are used for
+        additional features, but assigned one after another independent of the
+        time span between them.
+        hyperparameters -- values used for the prediction model (default {}) 
+        """
+        #extract parameters
+        p = hyperparameters["p"] if "p" in hyperparameters else self.default_hyperparameters["p"]
+        
+        #shift and lag ts
+        ts_shift = (ts - ts.shift(1)).fillna(0.)
+        X = pd.DataFrame({"lag%05d" % i: ts_shift.shift(i) for i in range(1, p + 1)[::-1]}).iloc[p:]
+        y = ts_shift.iloc[p:]
+        
+        #create pipeline
+        pipeline = Pipeline([
+            ("features", features),
+            ("regressor", LinearRegression(normalize=True))
+        ]).fit(X, y)
+    
+        #predict data
+        ts_all = [y for y in ts_shift]#remove index
+        for t in index_pred:
+            Xt = pd.DataFrame({"lag%05d" % i: ts_all[-i] for i in range(1, p + 1)[::-1]}, index=[t])
+            ts_all.append(pipeline.predict(Xt)[0])
+            print(t)
+        ts_pred = pd.Series(ts_all[-len(index_pred):], index=index_pred)
+        return ts[-1] + ts_pred.cumsum()
+    
+    def plot_split_seasonal(self, history, features, predictions=False, prediction_length=7*24, cv=True):
+        """
+        This function plots an overview over the seasonal split of a history of gas
+        prices as computed by `split_seasonal`.
+        
+        Keyword arguments:
+        history -- the time series to split up and visualize
+        features -- a pipeline to transform the features before predicting them
+        predictions -- whether to plot predictions too (default False)
+        prediction_length -- number of time steps to predict. This is only
+        effective if `predictions` is set to `True` (default 4*7*24)
+        cv -- whether to predict data that is known and can be cross-validated
+        (default True)   
+        """
+        #split price history
+        trend, weekly, res = split_seasonal(history)
+    
+        #predict price history
+        if predictions:
+            trend_pred, weekly_pred, res_pred = self.predict_split(
+                history[:-prediction_length] if cv else history,
+                features,
+                prediction_length=prediction_length
+            )
+            history_pred = trend_pred + weekly_pred + res_pred
+            
+            #print quality of predictions
+            #prediction_error = history[-prediction_length:] - history_pred
+            #print("Mean absolute prediction error %f" % prediction_error.abs().mean())
+    
+        #run Dickey-Fuller test for debugging
+        #print("History Without Trend")
+        #test_stationary(history - trend)
+        #print("Residual")
+        #test_stationary(res)
+    
+        #plot given time series
+        palette = sbn.color_palette(n_colors=6)
+        ax = plt.subplot(3, 1, 1) 
+        plt.plot(history, label="Price History", color=palette[1])
+        plt.plot(trend, label="Trend", color=palette[2])
+        if predictions:
+            ax.axvline(history_pred.index[0])
+            plt.plot(history_pred, linestyle="dashed", color=palette[1])
+            plt.plot(trend_pred, linestyle="dashed", color=palette[2])
+        ax.legend(loc=1)
+            
+        ax = plt.subplot(3, 1, 2)
+        plt.plot(history - trend, label="Price History without Trend", color=palette[3])
+        plt.plot(weekly, label="Weekly Pattern", color=palette[4])
+        if predictions:
+            ax.axvline(history_pred.index[0])
+            plt.plot(history_pred - trend_pred, linestyle="dashed", color=palette[3])
+            plt.plot(weekly_pred, linestyle="dashed", color=palette[4])
+        ax.set_ylim([-100, 100])
+        ax.legend(loc=1)
+    
+        ax = plt.subplot(3, 1, 3)
+        plt.plot(res, label="Residual", color=palette[5])
+        if predictions:
+            ax.axvline(history_pred.index[0])
+            plt.plot(res_pred, linestyle="dashed", color=palette[5])
+        ax.set_ylim([-100, 100])
+        ax.legend(loc=1)
+    
+        #the statsmodels module does it like this:
+        #import statsmodels.api as sm
+        #res = sm.tsa.seasonal_decompose(history, freq=7*24)
+        #res.plot()
+        #plt.show()
+    
+        #show plots
+        plt.show()
+    
 if __name__ == "__main__":
+    #usage samples
     Predictions().predict_station(
         Database().find_stations(place="Strausberg").index[0],
         #start=datetime(2017, 2, 1, 0, 0, 0, 0, pytz.utc),
