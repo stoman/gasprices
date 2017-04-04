@@ -124,6 +124,7 @@ class Predictions:
         self.default_hyperparameters = {
             "p": 2*24,
             "q": 2*24,
+            "featureset": ["ar", "ma", "time", "holidays"]
         }
         
     def predict_station(self, stid, start=datetime(2016, 5, 3, 0, 0, 0, 0, pytz.utc), end=datetime(2017, 3, 19, 0, 0, 0, 0, pytz.utc), fuel_type="diesel", prediction_length=7*24):
@@ -137,21 +138,60 @@ class Predictions:
             prediction_length=prediction_length
         ) 
         
-    def r2_prediction_score(self, stid, start=datetime(2016, 5, 3, 0, 0, 0, 0, pytz.utc), end=datetime(2017, 3, 19, 0, 0, 0, 0, pytz.utc), fuel_type="diesel", prediction_length=7*24):
+    def cross_validation(self, stid, start=datetime(2016, 5, 3, 0, 0, 0, 0, pytz.utc), end=datetime(2017, 3, 19, 0, 0, 0, 0, pytz.utc), fuel_type="diesel", prediction_length=7*24, fold=10):
+        #compute price history
         history = self.db.find_price_hourly_history(stid, start=start, end=end, fuel_type=fuel_type)
-        keys = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 24, 2*24, 3*24, 4*24, 5*24, 6*24, 7*24]
-        values = []
-        for t in keys:
-            values.append(r2_score(history[-prediction_length:], self.predict(history[:-prediction_length], prediction_length=prediction_length, p=t, q=t)))
-        return keys, values
+        station = self.db.find_stations(stids=[stid])
+        pipeline = self.get_feature_pipeline(zipcode=station.iloc[0]["post_code"])
+        
+        #compute errors for some past time frames
+        abs_errors, naive_error, mse, r2, index = [], [], [], [], []
+        for i in range(fold, 0, -1):
+            #predict time series
+            print("CV fold %d of %d" %(fold - i + 1, fold))
+            predictions = self.predict(
+                history.iloc[:-i*prediction_length-1],
+                pipeline,
+                prediction_length=prediction_length
+            )
+            #compute errors
+            abs_errors.append((predictions - history.iloc[-i*prediction_length-1:-(i-1)*prediction_length-1]).abs().mean())
+            naive_error.append((history.iloc[-i*prediction_length-2] - history.iloc[-i*prediction_length-1:-(i-1)*prediction_length-1]).abs().mean())
+            mse.append(((predictions - history.iloc[-i*prediction_length-1:-(i-1)*prediction_length-1]) ** 2).mean())
+            r2.append(1. - abs_errors[-1] / naive_error[-1])
+            index.append(history.index[-i*prediction_length-1])
+            
+        #create dataframe to return
+        return pd.DataFrame({"absolute": abs_errors, "mse": mse, "naive": naive_error, "r2": r2}, index=index)
     
-    def get_feature_pipeline(self, zipcode, q=2*24):
-        return FeatureUnion([
-            ("auto-regression", FunctionTransformer()),#identity function for first p features
-            ("moving_average", MovingAverage(q)),
-            ("time", DateFeatures()),
-            ("holidays", HolidayTransformer(zipcode=zipcode))
-        ])
+    def get_feature_pipeline(self, zipcode, hyperparameters={}):
+        """
+        Create a pipeline assembling all features that we use for predicting
+        gas prices from a shifted time series.
+        
+        Keyword arguments:
+        zipcode -- the zipcode of the gas station (needed for finding public
+        holidays)
+        hyperparameters -- values used for the prediction model (default {})
+        
+        Return value:
+        the sklearn feature pipeline 
+        """
+        #extract parameters
+        featureset = hyperparameters["featureset"] if "featureset" in hyperparameters else self.default_hyperparameters["featureset"]
+        q = hyperparameters["q"] if "q" in hyperparameters else self.default_hyperparameters["q"]
+        
+        #assemble pipeline
+        pipeline = []
+        if "ar" in featureset:
+            pipeline.append(("ar", FunctionTransformer()))#identity function for first p features
+        if "ma" in featureset:
+            pipeline.append(("ma", MovingAverage(q)))
+        if "time" in featureset:
+            pipeline.append(("time", DateFeatures()))
+        if "holidays" in featureset:
+            pipeline.append(("holidays", HolidayTransformer(zipcode=zipcode)))
+        return FeatureUnion(pipeline)
         
     def predict_split(self, history, features, prediction_length=7*24, hyperparameters={}):
         """
@@ -216,14 +256,14 @@ class Predictions:
         #return result
         return trend_pred, weekly_pred, res_pred
     
-    def predict(self, history, features, prediction_length=4*7*24, hyperparameters={}):
+    def predict(self, history, features, prediction_length=7*24, hyperparameters={}):
         """
         This function predicts a time series of gas prices.
     
         Keyword arguments:
         history -- the time series to split up
         features -- a pipeline to transform the features before predicting them
-        prediction_length -- the number of time steps to predict (default 4*7*24)
+        prediction_length -- the number of time steps to predict (default 7*24)
         hyperparameters -- values used for the prediction model (default {}) 
     
         Return value:
@@ -265,7 +305,6 @@ class Predictions:
         for t in index_pred:
             Xt = pd.DataFrame({"lag%05d" % i: ts_all[-i] for i in range(1, p + 1)[::-1]}, index=[t])
             ts_all.append(pipeline.predict(Xt)[0])
-            print(t)
         ts_pred = pd.Series(ts_all[-len(index_pred):], index=index_pred)
         return ts[-1] + ts_pred.cumsum()
     
@@ -345,14 +384,15 @@ class Predictions:
     
 if __name__ == "__main__":
     #usage samples
-    Predictions().predict_station(
+#     Predictions().predict_station(
+#         Database().find_stations(place="Strausberg").index[0],
+#         #start=datetime(2017, 2, 1, 0, 0, 0, 0, pytz.utc),
+#         end=datetime(2017, 3, 19, 0, 0, 0, 0, pytz.utc)
+#     )
+    errors = Predictions().cross_validation(
         Database().find_stations(place="Strausberg").index[0],
         #start=datetime(2017, 2, 1, 0, 0, 0, 0, pytz.utc),
         end=datetime(2017, 3, 19, 0, 0, 0, 0, pytz.utc)
     )
-#     plt.scatter(*Predictions().r2_prediction_score(
-#         Database().find_stations(place="Strausberg").index[0],
-#         #start=datetime(2017, 2, 1, 0, 0, 0, 0, pytz.utc),
-#         end=datetime(2017, 3, 19, 0, 0, 0, 0, pytz.utc)
-#     ))
-#     plt.show()
+    print(errors)
+    print(errors.describe())
