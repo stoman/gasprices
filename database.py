@@ -123,9 +123,15 @@ class Database:
         """
         #construct query
         table = self.meta.tables["gas_station_information_history"]
-        query = self.session.query(table).filter(sqlalchemy.and_(
-            table.c.date >= start, table.c.date <= end, table.c.stid.in_(stids)
-        )).order_by(table.c.date)
+        query = self.session.query(table).filter(
+            table.c.date >= start
+        ).filter(
+            table.c.date <= end
+        ).filter(
+            table.c.stid.in_(stids)
+        ).order_by(
+            table.c.date
+        )
         
         #create pandas dataframe
         df = pd.read_sql(query.statement, self.connection)

@@ -18,31 +18,31 @@ if not os.path.exists(cache_dir):
 
 @retry(stop_max_attempt_number=3)
 @checkpoint(key=lambda args, kwargs: "calendar-" + ("-".join(map(str, args))), work_dir=cache_dir)
-def download_holidays(year, county, calendar):
+def download_holidays(year, state, calendar):
     """
     Download an ical calendar containing holiday data. This function retries in
     case of internet problems and uses caching of the calendars.
     
     Keyword arguments:
     year -- the year of the calendar to load
-    county -- the county of Germany to load the data for in lower case with
+    state -- the state of Germany to load the data for in lower case with
     umlauts replaced by ae, oe, or ue
     calendar == the type of the calendar ("ferien" or "feiertage")
     
     Return value:
     the contents of the ical file 
     """
-    url = "http://www.schulferien-deutschland.net/ical/%s-%s-%d.ics" % (calendar, county, year)
+    url = "http://www.schulferien-deutschland.net/ical/%s-%s-%d.ics" % (calendar, state, year)
     return requests.get(url).text
 
-def holidays(index, county, calendar_types = ["ferien", "feiertage"]):
+def holidays(index, state, calendar_types = ["ferien", "feiertage"]):
     """
     Compute a pandas dataframe for a given time index that indicates whether
     there were public or school holidays that day.
     
     Keyword arguments:
     index -- a time series that should be used as the index of the dataframe
-    county -- the county of Germany to load the data for in lower case with
+    state -- the state of Germany to load the data for in lower case with
     umlauts replaced by ae, oe, or ue
     calendar_types -- the columns to compute (default ["ferien", "feiertage"])
     
@@ -57,7 +57,7 @@ def holidays(index, county, calendar_types = ["ferien", "feiertage"]):
         for date in index:
             #get new calendar if the year changed
             if not last_year == date.year:
-                calendar = Calendar.from_ical(download_holidays(date.year, county, calendar_type))
+                calendar = Calendar.from_ical(download_holidays(date.year, state, calendar_type))
                 last_year = date.year
             #update entries in the dataframe
             for t in calendar.walk("vevent"):
@@ -77,15 +77,15 @@ def download_zipcodes():
     """
     return requests.get("https://www.suche-postleitzahl.org/download_files/public/zuordnung_plz_ort.csv").text
 
-def zipcode_to_county(zipcode):
+def zipcode_to_state(zipcode):
     """
-    Convert a German zipcode to the name of the corresponding county.
+    Convert a German zipcode to the name of the corresponding state.
     
     Keyword arguments:
     zipcode -- the zipcode as a string
     
     Return value:
-    the county at the given zipcode in lower case with umlauts replaced by
+    the state at the given zipcode in lower case with umlauts replaced by
     ae, oe, and ue
     """
     csv = download_zipcodes().split("\n")
@@ -115,15 +115,15 @@ class HolidayTransformer(base.BaseEstimator, base.TransformerMixin):
         return self
     
     def transform(self, X):
-        county = zipcode_to_county(self.zipcode)
+        state = zipcode_to_state(self.zipcode)
         #What to do in case of lookup errors? We use a default value...
-        return holidays(X.index, county if county else "berlin")
+        return holidays(X.index, state if state else "berlin")
 
 if __name__ == "__main__":
-    #test calls for Stuttgart (in a county with umlaut)
+    #test calls for Stuttgart (in a state with umlaut)
     print(holidays(pd.date_range(
         start=datetime.utcnow(),
         end=datetime.utcnow() + timedelta(days=365),
         freq="1H",
         tz=pytz.utc
-    ), zipcode_to_county("70173")))
+    ), zipcode_to_state("70173")))

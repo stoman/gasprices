@@ -300,13 +300,12 @@ class Predictions:
 
         #create dataframe to return
         return pd.DataFrame({
-                "absolute": abs_errors,
-                "mse": mse,
-                "naive": naive_error,
-                "r2": [1. - a / n if not n == 0 else -999 for a, n in zip(abs_errors, naive_error)]
-            },
-            index=index
-        )
+            "date": index,
+            "absolute": abs_errors,
+            "mse": mse,
+            "naive": naive_error,
+            "r2": [1. - a / n if not n == 0 else -1 for a, n in zip(abs_errors, naive_error)]
+        })
     
     def get_feature_pipeline(self, zipcode, hyperparameters={}):
         """
@@ -418,7 +417,7 @@ if __name__ == "__main__":
 #         #start=datetime(2017, 2, 1, 0, 0, 0, 0, pytz.utc),
 #         end=datetime(2017, 1, 29, 0, 0, 0, 0, pytz.utc)
 #     )
-    n = 10
+    n = 5
     stations = Database().find_stations(active_after=datetime(2017, 3, 1, 0, 0, 0, 0, pytz.utc), active_before=datetime(2014, 7, 1, 0, 0, 0, 0, pytz.utc))
     print("selecting %d out of %d valid gas stations" % (n, len(stations)))
     np.random.seed(42)
@@ -426,9 +425,13 @@ if __name__ == "__main__":
     errors = pd.DataFrame()
     for i, stid in enumerate(stids):
         print("station %d of %d" % (i + 1, len(stids)))
-        new_errors = Predictions().cross_validation(stid)
+        new_errors = Predictions().cross_validation(stid, fold=3*8)
         new_errors["stid"] = stid
         errors = errors.append(new_errors)
+        print(new_errors.describe())
+    print("All errors")
     print(errors.describe())
-    print(errors.groupby("date").mean().describe())
-    print(errors.groupby("stid").mean().describe())
+    print("Errors by date")
+    print(errors.groupby("date").mean())
+    print("Errors by station")
+    print(errors.groupby("stid").mean())
