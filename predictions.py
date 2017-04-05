@@ -286,9 +286,10 @@ class Predictions:
             prediction_length=prediction_length
         ) 
         
-    def cross_validation(self, stid, start=datetime(2016, 5, 3, 0, 0, 0, 0, pytz.utc), end=datetime(2017, 3, 19, 0, 0, 0, 0, pytz.utc), fuel_type="diesel", prediction_length=7*24, fold=10):
+    def cross_validation(self, stid, start=datetime(2016, 5, 3, 0, 0, 0, 0, pytz.utc), end=datetime(2017, 3, 19, 0, 0, 0, 0, pytz.utc), fuel_type="diesel", prediction_length=7*24, fold=52):
         #compute price history
         history = self.db.find_price_hourly_history(stid, start=start, end=end, fuel_type=fuel_type)
+        fold = min(fold, len(history) // prediction_length - 1)
         station = self.db.find_stations(stids=[stid])
         pipeline = self.get_feature_pipeline(zipcode=station.iloc[0]["post_code"])
         
