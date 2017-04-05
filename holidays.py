@@ -35,7 +35,7 @@ def download_holidays(year, state, calendar):
     url = "http://www.schulferien-deutschland.net/ical/%s-%s-%d.ics" % (calendar, state, year)
     return requests.get(url).text
 
-def holidays(index, state, calendar_types = ["ferien", "feiertage"]):
+def holidays(index, state, calendar_types = ["ferien", "feiertage"], max_offset=7):
     """
     Compute a pandas dataframe for a given time index that indicates whether
     there were public or school holidays that day.
@@ -45,24 +45,30 @@ def holidays(index, state, calendar_types = ["ferien", "feiertage"]):
     state -- the state of Germany to load the data for in lower case with
     umlauts replaced by ae, oe, or ue
     calendar_types -- the columns to compute (default ["ferien", "feiertage"])
+    max_offset -- the number of days to shift the current date and add features
+    for (default 7)
     
     Return value:
     the pandas dataframe as described above
     """
+    offsets = range(-max_offset, max_offset, 1)
+    
     #set all values to 0 at first, update later in case of holidays
-    ret = pd.DataFrame({calendar_type: 0 for calendar_type in calendar_types}, index=index)
-    for calendar_type in calendar_types:
-        last_year = -1
-        calendar = None
-        for date in index:
-            #get new calendar if the year changed
-            if not last_year == date.year:
-                calendar = Calendar.from_ical(download_holidays(date.year, state, calendar_type))
-                last_year = date.year
-            #update entries in the dataframe
-            for t in calendar.walk("vevent"):
-                if t['DTSTART'].dt <= date.date() and date.date() <= t['DTEND'].dt:
-                    ret.loc[date][calendar_type] = 1
+    ret = pd.DataFrame({"%s_%d" % (calendar_type, offset): 0 for calendar_type in calendar_types for offset in offsets}, index=index)
+    for offset in offsets:
+        for calendar_type in calendar_types:
+            last_year = -1
+            calendar = None
+            for orig_date in index:
+                date = orig_date + timedelta(days=offset)
+                #get new calendar if the year changed
+                if not last_year == date.year:
+                    calendar = Calendar.from_ical(download_holidays(date.year, state, calendar_type))
+                    last_year = date.year
+                #update entries in the dataframe
+                for t in calendar.walk("vevent"):
+                    if t['DTSTART'].dt <= date.date() and date.date() <= t['DTEND'].dt:
+                        ret.loc[orig_date]["%s_%d" % (calendar_type, offset)] = 1
     return ret
 
 @retry(stop_max_attempt_number=3)
