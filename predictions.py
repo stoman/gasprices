@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 import multiprocessing
 from pickletools import optimize
 
+from numpy.random import randint
 import pytz
 from sklearn import base
 from sklearn.feature_extraction import DictVectorizer
@@ -275,7 +276,7 @@ class Predictions:
         """
         self.db = Database()
         
-    def predict_station(self, stid, start=datetime(2016, 5, 3, 0, 0, 0, 0, pytz.utc), end=datetime(2017, 3, 19, 0, 0, 0, 0, pytz.utc), fuel_type="diesel", prediction_length=7*24):
+    def predict_station(self, stid, start=datetime(2014, 7, 1, 0, 0, 0, 0, pytz.utc), end=datetime(2017, 3, 19, 0, 0, 0, 0, pytz.utc), fuel_type="diesel", prediction_length=7*24):
         history = self.db.find_price_hourly_history(stid, start=start, end=end, fuel_type=fuel_type)
         station = self.db.find_stations(stids=[stid])
         self.plot_split_seasonal(
@@ -286,7 +287,7 @@ class Predictions:
             prediction_length=prediction_length
         ) 
         
-    def cross_validation(self, stid, start=datetime(2016, 5, 3, 0, 0, 0, 0, pytz.utc), end=datetime(2017, 3, 19, 0, 0, 0, 0, pytz.utc), fuel_type="diesel", prediction_length=7*24, fold=52):
+    def cross_validation(self, stid, start=datetime(2014, 7, 1, 0, 0, 0, 0, pytz.utc), end=datetime(2017, 3, 19, 0, 0, 0, 0, pytz.utc), fuel_type="diesel", prediction_length=7*24, fold=52):
         #compute price history
         history = self.db.find_price_hourly_history(stid, start=start, end=end, fuel_type=fuel_type)
         fold = min(fold, len(history) // prediction_length - 1)
@@ -302,7 +303,7 @@ class Predictions:
                 "absolute": abs_errors,
                 "mse": mse,
                 "naive": naive_error,
-                "r2": [1. - a / n for a, n in zip(abs_errors, naive_error)]
+                "r2": [1. - a / n if not n == 0 else -999 for a, n in zip(abs_errors, naive_error)]
             },
             index=index
         )
@@ -417,10 +418,14 @@ if __name__ == "__main__":
 #         #start=datetime(2017, 2, 1, 0, 0, 0, 0, pytz.utc),
 #         end=datetime(2017, 1, 29, 0, 0, 0, 0, pytz.utc)
 #     )
-    errors = Predictions().cross_validation(
-        Database().find_stations(place="Strausberg").index[0],
-        #start=datetime(2017, 2, 1, 0, 0, 0, 0, pytz.utc),
-        end=datetime(2017, 3, 19, 0, 0, 0, 0, pytz.utc)
-    )
+    stations = Database().find_stations()
+    np.random.seed(42)
+    stids = stations.index[randint(0, len(stations), 2)]
+    errors = pd.DataFrame()
+    for i, stid in enumerate(stids):
+        print("station %d of %d" % (i + 1, len(stids)))
+        new_errors = Predictions().cross_validation(stid, prediction_length=1, fold=2)
+        new_errors["stid"] = stid
+        errors = errors.append(new_errors)
     print(errors)
     print(errors.describe())
