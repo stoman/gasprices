@@ -93,9 +93,13 @@ def zipcode_to_county(zipcode):
     for i, column in enumerate(csv[0].split(",")):
         columns[column] = i
     for row in csv[1:]:
-        split = row.split(",")
-        if split[columns["plz"]] == zipcode:
-            return split[columns["bundesland"]].replace("ü", "ue").lower()
+        try:
+            split = row.split(",")
+            if split[columns["plz"]] == zipcode:
+                return split[columns["bundesland"]].replace("ü", "ue").lower()
+        #in case of errors ignore that line
+        except:
+            pass
     return None
 
 class HolidayTransformer(base.BaseEstimator, base.TransformerMixin):
@@ -111,7 +115,9 @@ class HolidayTransformer(base.BaseEstimator, base.TransformerMixin):
         return self
     
     def transform(self, X):
-        return holidays(X.index, zipcode_to_county(self.zipcode))
+        county = zipcode_to_county(self.zipcode)
+        #What to do in case of lookup errors? We use a default value...
+        return holidays(X.index, county if county else "berlin")
 
 if __name__ == "__main__":
     #test calls for Stuttgart (in a county with umlaut)

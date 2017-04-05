@@ -75,15 +75,30 @@ class Database:
             query = query.filter(table.c.id.in_(stids))
         
         if active_after or active_before:
+            #construct subquery for first and last price change
             price_table = self.meta.tables["gas_station_information_history"]
             sq = self.session.query(
                 price_table.c.stid,
                 func.min(price_table.c.date).label("first"),
                 func.max(price_table.c.date).label("last")
-            ).group_by(price_table.c.stid).subquery()
+            )
+            
+            #shorten list of price changes if possible
+            if active_before and active_after:
+                sq = sq.filter(sqlalchemy.or_(
+                    price_table.c.date <= active_before,
+                    price_table.c.date >= active_after
+                ))
+            elif active_before:
+                sq = sq.filter(price_table.c.date <= active_before)
+            elif active_after:
+                sq = sq.filter(price_table.c.date >= active_after)
+                
+            #add subquery to actual query
+            sq = sq.group_by(price_table.c.stid).subquery()
             query = query.join(sq, table.c.id == sq.c.stid)
             if active_before:
-                query = query.filter(sq.c.first >= active_before)
+                query = query.filter(sq.c.first <= active_before)
             if active_after:
                 query = query.filter(sq.c.last >= active_after)
         

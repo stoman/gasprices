@@ -419,7 +419,7 @@ if __name__ == "__main__":
 #         end=datetime(2017, 1, 29, 0, 0, 0, 0, pytz.utc)
 #     )
     n = 10
-    stations = Database().find_stations(active_after=datetime(2017, 3, 1, 0, 0, 0, 0, pytz.utc), active_before=datetime(2014, 8, 1, 0, 0, 0, 0, pytz.utc))
+    stations = Database().find_stations(active_after=datetime(2017, 3, 1, 0, 0, 0, 0, pytz.utc), active_before=datetime(2014, 7, 1, 0, 0, 0, 0, pytz.utc))
     print("selecting %d out of %d valid gas stations" % (n, len(stations)))
     np.random.seed(42)
     stids = stations.index[randint(0, len(stations), n)]
