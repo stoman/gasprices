@@ -418,14 +418,17 @@ if __name__ == "__main__":
 #         #start=datetime(2017, 2, 1, 0, 0, 0, 0, pytz.utc),
 #         end=datetime(2017, 1, 29, 0, 0, 0, 0, pytz.utc)
 #     )
-    stations = Database().find_stations()
+    n = 10
+    stations = Database().find_stations(active_after=datetime(2017, 3, 1, 0, 0, 0, 0, pytz.utc), active_before=datetime(2014, 8, 1, 0, 0, 0, 0, pytz.utc))
+    print("selecting %d out of %d valid gas stations" % (n, len(stations)))
     np.random.seed(42)
-    stids = stations.index[randint(0, len(stations), 2)]
+    stids = stations.index[randint(0, len(stations), n)]
     errors = pd.DataFrame()
     for i, stid in enumerate(stids):
         print("station %d of %d" % (i + 1, len(stids)))
-        new_errors = Predictions().cross_validation(stid, prediction_length=1, fold=2)
+        new_errors = Predictions().cross_validation(stid)
         new_errors["stid"] = stid
         errors = errors.append(new_errors)
-    print(errors)
     print(errors.describe())
+    print(errors.groupby("date").mean().describe())
+    print(errors.groupby("stid").mean().describe())

@@ -53,7 +53,7 @@ class Database:
         Session = sessionmaker(bind=self.connection)
         self.session = Session()
     
-    def find_stations(self, place=None, stids=None):
+    def find_stations(self, place=None, stids=None, active_after=None, active_before=None):
         """
         Create a pandas dataframe containing all gas stations with the given
         properties.
@@ -73,6 +73,19 @@ class Database:
             query = query.filter(table.c.place == place)
         if stids:
             query = query.filter(table.c.id.in_(stids))
+        
+        if active_after or active_before:
+            price_table = self.meta.tables["gas_station_information_history"]
+            sq = self.session.query(
+                price_table.c.stid,
+                func.min(price_table.c.date).label("first"),
+                func.max(price_table.c.date).label("last")
+            ).group_by(price_table.c.stid).subquery()
+            query = query.join(sq, table.c.id == sq.c.stid)
+            if active_before:
+                query = query.filter(sq.c.first >= active_before)
+            if active_after:
+                query = query.filter(sq.c.last >= active_after)
         
         #create pandas dataframe
         return pd.read_sql(query.statement, self.connection).set_index("id")
