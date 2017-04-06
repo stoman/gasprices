@@ -202,6 +202,7 @@ def one_cv_step(i, fold, prediction_length, history, pipeline):
         (predictions - history.iloc[-i*prediction_length-1:-(i-1)*prediction_length-1]).abs().mean(),
         (history.iloc[-i*prediction_length-2] - history.iloc[-i*prediction_length-1:-(i-1)*prediction_length-1]).abs().mean(),
         ((predictions - history.iloc[-i*prediction_length-1:-(i-1)*prediction_length-1]) ** 2).mean(),
+        (history.iloc[-(i+1)*prediction_length-1:-i*prediction_length-1].reset_index(drop=True) - history.iloc[-i*prediction_length-1:-(i-1)*prediction_length-1].reset_index(drop=True)).abs().mean(),
         history.index[-i*prediction_length-1]
     )
     return ret
@@ -290,15 +291,17 @@ class Predictions:
         
         #compute errors for some past time frames
         errors = multiprocessing.Pool().starmap(one_cv_step, [(i, fold, prediction_length, history, pipeline) for i in range(fold, 0, -1)])
-        abs_errors, naive_error, mse, index = zip(*errors)    
+        abs_errors, naive_error, mse, shift24, index = zip(*errors)    
 
         #create dataframe to return
         return pd.DataFrame({
             "date": index,
             "absolute": abs_errors,
             "mse": mse,
-            "naive": naive_error,
-            "r2": [1. - a / n if not n == 0 else -1 for a, n in zip(abs_errors, naive_error)]
+            "last": naive_error,
+            "shift 24": shift24,
+            "r2 (last)": [1. - a / n if not n == 0 else -1 for a, n in zip(abs_errors, naive_error)],
+            "r2 (shift 24)": [1. - a / n if not n == 0 else -1 for a, n in zip(abs_errors, shift24)],
         })
     
     def get_feature_pipeline(self, zipcode, hyperparameters={}):
@@ -406,10 +409,10 @@ class Predictions:
     
 if __name__ == "__main__":
     #usage samples
-    Predictions().predict_station(
-        Database().find_stations(place="Strausberg").index[0]
-    )
-    n = 5
+    #Predictions().predict_station(
+    #    Database().find_stations(place="Strausberg").index[0]
+    #)
+    n = 10
     stations = Database().find_stations(active_after=datetime(2017, 3, 1, 0, 0, 0, 0, pytz.utc), active_before=datetime(2014, 7, 1, 0, 0, 0, 0, pytz.utc))
     print("selecting %d out of %d valid gas stations" % (n, len(stations)))
     np.random.seed(42)
@@ -417,7 +420,7 @@ if __name__ == "__main__":
     errors = pd.DataFrame()
     for i, stid in enumerate(stids):
         print("station %d of %d" % (i + 1, len(stids)))
-        new_errors = Predictions().cross_validation(stid, fold=3, prediction_length=24)
+        new_errors = Predictions().cross_validation(stid, fold=8, prediction_length=7*24)
         new_errors["stid"] = stid
         errors = errors.append(new_errors)
         print(new_errors.describe())
