@@ -165,13 +165,15 @@ class Database:
         current_price = self.find_prices([stid], time=start, fuel_types=[fuel_type])[fuel_type][0]
 
         #uncompress price data
-        history = pd.Series()
         index_compressed = 0
-        for date in pd.date_range(start=start, end=end, freq="1H", tz=pytz.utc):
+        history_data = []
+        index = pd.date_range(start=start, end=end, freq="1H", tz=pytz.utc)
+        for date in index:
             if index_compressed < len(history_compressed) and history_compressed.index[index_compressed] <= date:
                 current_price = history_compressed.iloc[index_compressed]
                 index_compressed += 1
-            history[date] = current_price
+            history_data.append(current_price)
+        history = pd.Series(history_data, index=index)
 
         return history
 

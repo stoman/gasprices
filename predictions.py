@@ -72,7 +72,7 @@ def predict_split(history, features, prediction_length=7*24, hyperparameters={})
     #plt.show()
 
     #predict the trend    
-    trend_pred = predict_ts(trend, features, index_pred, hyperparameters=hyperparameters)
+    trend_pred = predict_ts((trend - trend.shift(1)).fillna(0.), features, index_pred, hyperparameters=hyperparameters).cumsum() + trend.iloc[-1]
 
     #alternative: using AR from statsmodels    
     #trend_model = AR(trend_shift)
@@ -81,10 +81,10 @@ def predict_split(history, features, prediction_length=7*24, hyperparameters={})
     #trend_pred = trend_res.cumsum() + trend[-1]
     
     #compute residual prediction
-    #res_pred = self.predict_ts(res, features, index_pred, hyperparameters=hyperparameters)
+    res_pred = predict_ts(res, features, index_pred, hyperparameters=hyperparameters)
     
     #alternative: set zero
-    res_pred = pd.Series(index=trend_pred.index).fillna(0.)
+    #res_pred = pd.Series(index=trend_pred.index).fillna(0.)
     
     #alternative: using AR from statsmodels    
     #res_model = AR(res)
@@ -108,19 +108,14 @@ def split_seasonal(history):
     """
     #compute trend
     length_week = 7*24
-    trend = history.rolling(window=length_week, center=True, min_periods=1).mean()
+    trend = history.rolling(window=length_week, min_periods=1).mean()
     
     #compute the weekly changes
     weekly = pd.Series()
     for i in range(length_week):
-        weekly = weekly.append((history - trend)[i::length_week].rolling(window=9, center=True, min_periods=1).mean())
+        weekly = weekly.append((history - trend)[i::length_week].rolling(window=5, min_periods=1).median())
     weekly.sort_index(inplace=True)
-    
-    #weekly = [(history - trend)[-length_week+i::-length_week].mean() for i in range(length_week)]
-    #seasonal_uncut = np.tile(weekly, 1 + len(history) // length_week)
-    #seasonal = seasonal_uncut[len(seasonal_uncut) - len(history):]
-    #seasonal_series = pd.Series(seasonal, index=history.index)
-    
+       
     #compute residual
     res = history - trend - weekly
     
@@ -245,9 +240,8 @@ def predict_ts(ts, features, index_pred, hyperparameters={}):
     p = hyperparameters["p"] if "p" in hyperparameters else default_hyperparameters["p"]
     
     #shift and lag ts
-    ts_shift = (ts - ts.shift(1)).fillna(0.)
-    X = pd.DataFrame({"lag%05d" % i: ts_shift.shift(i) for i in range(1, p + 1)[::-1]}).iloc[p:]
-    y = ts_shift.iloc[p:]
+    X = pd.DataFrame({"lag%05d" % i: ts.shift(i) for i in range(1, p + 1)[::-1]}).iloc[p:]
+    y = ts.iloc[p:]
     
     #create pipeline
     pipeline = Pipeline([
@@ -256,12 +250,12 @@ def predict_ts(ts, features, index_pred, hyperparameters={}):
     ]).fit(X, y)
 
     #predict data
-    ts_all = [y for y in ts_shift]#remove index
+    ts_all = [y for y in ts]#remove index
     for t in index_pred:
         Xt = pd.DataFrame({"lag%05d" % i: ts_all[-i] for i in range(1, p + 1)[::-1]}, index=[t])
         ts_all.append(pipeline.predict(Xt)[0])
     ts_pred = pd.Series(ts_all[-len(index_pred):], index=index_pred)
-    return ts[-1] + ts_pred.cumsum()
+    return ts_pred
 
 class Predictions:
     """
@@ -355,7 +349,7 @@ class Predictions:
     
         #predict price history
         if predictions:
-            trend_pred, weekly_pred, res_pred = self.predict_split(
+            trend_pred, weekly_pred, res_pred = predict_split(
                 history[:-prediction_length] if cv else history,
                 features,
                 prediction_length=prediction_length
@@ -412,11 +406,9 @@ class Predictions:
     
 if __name__ == "__main__":
     #usage samples
-#     Predictions().predict_station(
-#         Database().find_stations(place="Strausberg").index[0],
-#         #start=datetime(2017, 2, 1, 0, 0, 0, 0, pytz.utc),
-#         end=datetime(2017, 1, 29, 0, 0, 0, 0, pytz.utc)
-#     )
+    Predictions().predict_station(
+        Database().find_stations(place="Strausberg").index[0]
+    )
     n = 5
     stations = Database().find_stations(active_after=datetime(2017, 3, 1, 0, 0, 0, 0, pytz.utc), active_before=datetime(2014, 7, 1, 0, 0, 0, 0, pytz.utc))
     print("selecting %d out of %d valid gas stations" % (n, len(stations)))
@@ -425,7 +417,7 @@ if __name__ == "__main__":
     errors = pd.DataFrame()
     for i, stid in enumerate(stids):
         print("station %d of %d" % (i + 1, len(stids)))
-        new_errors = Predictions().cross_validation(stid, fold=3*8)
+        new_errors = Predictions().cross_validation(stid, fold=3, prediction_length=24)
         new_errors["stid"] = stid
         errors = errors.append(new_errors)
         print(new_errors.describe())

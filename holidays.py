@@ -35,7 +35,7 @@ def download_holidays(year, state, calendar):
     url = "http://www.schulferien-deutschland.net/ical/%s-%s-%d.ics" % (calendar, state, year)
     return requests.get(url).text
 
-def holidays(index, state, calendar_types = ["ferien", "feiertage"], max_offset=7):
+def holidays(index, state, calendar_types = ["ferien", "feiertage"], max_offset=0):
     """
     Compute a pandas dataframe for a given time index that indicates whether
     there were public or school holidays that day.
@@ -51,7 +51,7 @@ def holidays(index, state, calendar_types = ["ferien", "feiertage"], max_offset=
     Return value:
     the pandas dataframe as described above
     """
-    offsets = range(-max_offset, max_offset, 1)
+    offsets = range(-max_offset, max_offset+1, 1)
     
     #set all values to 0 at first, update later in case of holidays
     ret = pd.DataFrame({"%s_%d" % (calendar_type, offset): 0 for calendar_type in calendar_types for offset in offsets}, index=index)
