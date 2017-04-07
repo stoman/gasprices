@@ -1,14 +1,23 @@
 {% extends "base.html" %}
 {% block content %}
   <div class="fullpage">
-	<div class="section container search">
-	  <div class="row">
-	    <div class="jumbotron col-md-8 col-md-offset-2 col-lg-8 col-lg-offset-2">
+	<div class="section search">
+	  <div class="container">
+        <div class="jumbotron">
           <h1>Select a Gas Station</h1>
 	      <input class="typeahead form-control" type="text" placeholder="Select a Gas Station">
 	    </div>
 	  </div>
 	</div>
-	<div class="section container predictions">Predictions</div>
+	<div class="section predictions">
+	  <div class="container">
+		<div class="progress loading">
+		  <div class="progress-bar progress-bar-striped active" role="progressbar" style="width: 100%;">
+		    Loading...
+		  </div>
+		</div>
+        <div class="content"></div>
+	  </div>
+	</div>
   </div>
 {% endblock %}

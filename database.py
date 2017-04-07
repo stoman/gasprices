@@ -36,7 +36,7 @@ class Database:
         #find database credentials
         if not dbconfig:
             dbconfig = SafeConfigParser()
-            dbconfig.read("db.ini")
+            dbconfig.read("config.ini")
         
         #connect to database
         self.connection = sqlalchemy.create_engine(

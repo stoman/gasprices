@@ -33,3 +33,8 @@
 .section.predictions {
 	background-color: #91AA9D;
 }
+
+.section.predictions .map {
+	position: absolute;
+	top: 0;
+}

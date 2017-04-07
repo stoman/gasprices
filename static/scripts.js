@@ -1,3 +1,14 @@
+function loadPredictions(stid) {
+	$(".section.predictions .content").hide();
+	$(".section.predictions .loading").show();
+	$.ajax({
+		url: "/api/predictions/" + stid
+	}).done(function(response) {
+		$(".section.predictions .content").html(response).show();
+		$(".section.predictions .loading").hide();
+	});
+}
+
 $(document).ready(function() {
 	//load fullpage objects
 	$('.fullpage').fullpage({
@@ -21,14 +32,15 @@ $(document).ready(function() {
 	}, {
 	  name: "engine",
 	  displayKey: function(datum) {
-	  	return datum.name + " (" + datum.brand + "), " + datum.street + ", " + datum.post_code + " " + datum.place; 
+	  	return datum.brand + ": " + datum.name + ", " + datum.street + ", " + datum.post_code + " " + datum.place; 
 	  },
 	  source: engine.ttAdapter(),
 	  templates: {
-      	suggestion: Handlebars.compile('<p><strong>{{name}} ({{brand}})</strong>, {{street}}, {{post_code}} {{place}}</p>')
+      	suggestion: Handlebars.compile('<p><strong>{{brand}}: {{name}}</strong>, {{street}}, {{post_code}} {{place}}</p>')
       }
 	});
-	jQuery('.typeahead').on('typeahead:selected', function (e, datum) {
+	$('.typeahead').on('typeahead:selected', function (event, station) {
       $.fn.fullpage.moveTo('predictions');
+      loadPredictions(station.id);
     });
 });

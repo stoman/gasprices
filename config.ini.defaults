@@ -5,3 +5,6 @@ dbname=dbname
 host=localhost
 type=postgresql
 port=5432
+
+[gmaps]
+apikey=key
