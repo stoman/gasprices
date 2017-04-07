@@ -1,6 +1,8 @@
 $(document).ready(function() {
 	//load fullpage objects
-	$('.fullpage').fullpage();
+	$('.fullpage').fullpage({
+		anchors: ["search", "predictions"]
+	});
 	
 	//create gas station typeahead
 	var engine = new Bloodhound({
@@ -27,6 +29,6 @@ $(document).ready(function() {
       }
 	});
 	jQuery('.typeahead').on('typeahead:selected', function (e, datum) {
-      console.log(datum.id);
+      $.fn.fullpage.moveTo('predictions');
     });
 });

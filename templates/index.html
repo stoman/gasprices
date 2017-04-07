@@ -1,10 +1,14 @@
 {% extends "base.html" %}
 {% block content %}
   <div class="fullpage">
-	<div class="section">
-	  Select a Gas Station
-	  <input class="typeahead" type="text" placeholder="Select a Gas Station">
+	<div class="section container search">
+	  <div class="row">
+	    <div class="jumbotron col-md-8 col-md-offset-2 col-lg-8 col-lg-offset-2">
+          <h1>Select a Gas Station</h1>
+	      <input class="typeahead form-control" type="text" placeholder="Select a Gas Station">
+	    </div>
+	  </div>
 	</div>
-	<div class="section">Some section</div>
+	<div class="section container predictions">Predictions</div>
   </div>
 {% endblock %}
