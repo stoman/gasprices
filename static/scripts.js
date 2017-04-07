@@ -3,35 +3,30 @@ $(document).ready(function() {
 	$('.fullpage').fullpage();
 	
 	//create gas station typeahead
-	var substringMatcher = function(strs) {
-	  return function findMatches(q, cb) {
-	    var matches, substringRegex;
-	
-	    // an array that will be populated with substring matches
-	    matches = [];
-	
-	    // regex used to determine if a string contains the substring `q`
-	    substrRegex = new RegExp(q, 'i');
-	
-	    // iterate through the pool of strings and for any string that
-	    // contains the substring `q`, add it to the `matches` array
-	    $.each(strs, function(i, str) {
-	      if (substrRegex.test(str)) {
-	        matches.push(str);
-	      }
-	    });
-	
-	    cb(matches);
-	  };
-	};
+	var engine = new Bloodhound({
+      datumTokenizer: function (datum) {
+        return Bloodhound.tokenizers.whitespace(datum.name);
+	  },
+	  queryTokenizer: Bloodhound.tokenizers.whitespace,
+      prefetch: "/api/stations"
+	});
+	engine.initialize();
 	
 	$('.typeahead').typeahead({
 	  hint: true,
 	  highlight: true,
 	  minLength: 1
-	},
-	{
-	  name: 'states',
-	  source: substringMatcher(["a", "bc", "bdvsasdfgb"])
+	}, {
+	  name: "engine",
+	  displayKey: function(datum) {
+	  	return datum.name + " (" + datum.brand + "), " + datum.street + ", " + datum.post_code + " " + datum.place; 
+	  },
+	  source: engine.ttAdapter(),
+	  templates: {
+      	suggestion: Handlebars.compile('<p><strong>{{name}} ({{brand}})</strong>, {{street}}, {{post_code}} {{place}}</p>')
+      }
 	});
+	jQuery('.typeahead').on('typeahead:selected', function (e, datum) {
+      console.log(datum.id);
+    });
 });

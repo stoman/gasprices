@@ -19,6 +19,7 @@
     "fullpage.js": "^2.9.4",
     "bootstrap": "^3.3.7",
     "jquery": "^3.2.1",
-    "typeahead.js": "^0.11.1"
+    "typeahead.js": "^0.11.1",
+    "handlebars": "^4.0.5"
   }
 }
