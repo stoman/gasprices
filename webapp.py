@@ -22,4 +22,4 @@ def stations():
     return json.dumps(data_dict)
 
 #run flask
-app.run(debug=True)
+app.run(host="0.0.0.0", debug=True)
