@@ -5,6 +5,7 @@ import pytz
 from database import Database
 import matplotlib.pyplot as plt
 import pandas as pd
+from predictions import split_seasonal, predict_split, Predictions
 import seaborn as sbn
 
 
@@ -41,7 +42,6 @@ class Plots:
         )
         fig = plt.gcf()
         fig.gca().add_artist(plt.Circle((0, 0), 0.7, fc="white"))
-        plt.show()
     
     def prices(self, stids=[], start=pytz.utc.localize(datetime.utcnow()) - timedelta(days=14), end=pytz.utc.localize(datetime.utcnow()), title="", nightstart=22, nightend=6, fuel_types=["diesel", "e5", "e10"]):
         """
@@ -113,7 +113,76 @@ class Plots:
             
         #show plot
         ax.legend(bbox_to_anchor=(1., .95))
-        plt.show()
+
+    def split(self, history, features, predictions=False, prediction_length=7*24, cv=True):
+        """
+        This function plots an overview over the seasonal split of a history of gas
+        prices as computed by `predictions.split_seasonal`.
+        
+        Keyword arguments:
+        history -- the time series to split up and visualize
+        features -- a pipeline to transform the features before predicting them
+        predictions -- whether to plot predictions too (default False)
+        prediction_length -- number of time steps to predict. This is only
+        effective if `predictions` is set to `True` (default 4*7*24)
+        cv -- whether to predict data that is known and can be cross-validated
+        (default True)   
+        """
+        #split price history
+        trend, weekly, res = split_seasonal(history)
+    
+        #predict price history
+        if predictions:
+            trend_pred, weekly_pred, res_pred = predict_split(
+                history[:-prediction_length] if cv else history,
+                features,
+                prediction_length=prediction_length
+            )
+            history_pred = trend_pred + weekly_pred + res_pred
+            
+            #print quality of predictions
+            #prediction_error = history[-prediction_length:] - history_pred
+            #print("Mean absolute prediction error %f" % prediction_error.abs().mean())
+    
+        #run Dickey-Fuller test for debugging
+        #print("History Without Trend")
+        #test_stationary(history - trend)
+        #print("Residual")
+        #test_stationary(res)
+    
+        #plot given time series
+        palette = sbn.color_palette(n_colors=6)
+        ax = plt.subplot(3, 1, 1) 
+        plt.plot(history, label="Price History", color=palette[1])
+        plt.plot(trend, label="Trend", color=palette[2])
+        if predictions:
+            ax.axvline(history_pred.index[0])
+            plt.plot(history_pred, linestyle="dashed", color=palette[1])
+            plt.plot(trend_pred, linestyle="dashed", color=palette[2])
+        ax.legend(loc=1)
+            
+        ax = plt.subplot(3, 1, 2)
+        plt.plot(history - trend, label="Price History without Trend", color=palette[3])
+        plt.plot(weekly, label="Weekly Pattern", color=palette[4])
+        if predictions:
+            ax.axvline(history_pred.index[0])
+            plt.plot(history_pred - trend_pred, linestyle="dashed", color=palette[3])
+            plt.plot(weekly_pred, linestyle="dashed", color=palette[4])
+        ax.set_ylim([-100, 100])
+        ax.legend(loc=1)
+    
+        ax = plt.subplot(3, 1, 3)
+        plt.plot(res, label="Residual", color=palette[5])
+        if predictions:
+            ax.axvline(history_pred.index[0])
+            plt.plot(res_pred, linestyle="dashed", color=palette[5])
+        ax.set_ylim([-100, 100])
+        ax.legend(loc=1)
+    
+        #the statsmodels module does it like this:
+        #import statsmodels.api as sm
+        #res = sm.tsa.seasonal_decompose(history, freq=7*24)
+        #res.plot()
 
 #sample usage
 if __name__ == "__main__":
@@ -130,3 +199,17 @@ if __name__ == "__main__":
         start=pytz.utc.localize(datetime.utcnow()) - timedelta(weeks=5),
         end=pytz.utc.localize(datetime.utcnow()) - timedelta(weeks=2)
     )
+    
+    #plot seasonal split
+    db = Database()
+    station = db.find_stations(place="Strausberg")
+    history = db.find_price_hourly_history(station.index[0])
+    plots.split(
+        history,
+        Predictions().get_feature_pipeline(zipcode=station.iloc[0]["post_code"]),
+        predictions=True,
+        cv=True
+    )
+    
+    #show plots
+    plt.show()

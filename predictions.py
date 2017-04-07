@@ -332,86 +332,9 @@ class Predictions:
         if "holidays" in featureset:
             pipeline.append(("holidays", HolidayTransformer(zipcode=zipcode)))
         return FeatureUnion(pipeline)
-        
-    def plot_split_seasonal(self, history, features, predictions=False, prediction_length=7*24, cv=True):
-        """
-        This function plots an overview over the seasonal split of a history of gas
-        prices as computed by `split_seasonal`.
-        
-        Keyword arguments:
-        history -- the time series to split up and visualize
-        features -- a pipeline to transform the features before predicting them
-        predictions -- whether to plot predictions too (default False)
-        prediction_length -- number of time steps to predict. This is only
-        effective if `predictions` is set to `True` (default 4*7*24)
-        cv -- whether to predict data that is known and can be cross-validated
-        (default True)   
-        """
-        #split price history
-        trend, weekly, res = split_seasonal(history)
-    
-        #predict price history
-        if predictions:
-            trend_pred, weekly_pred, res_pred = predict_split(
-                history[:-prediction_length] if cv else history,
-                features,
-                prediction_length=prediction_length
-            )
-            history_pred = trend_pred + weekly_pred + res_pred
             
-            #print quality of predictions
-            #prediction_error = history[-prediction_length:] - history_pred
-            #print("Mean absolute prediction error %f" % prediction_error.abs().mean())
-    
-        #run Dickey-Fuller test for debugging
-        #print("History Without Trend")
-        #test_stationary(history - trend)
-        #print("Residual")
-        #test_stationary(res)
-    
-        #plot given time series
-        palette = sbn.color_palette(n_colors=6)
-        ax = plt.subplot(3, 1, 1) 
-        plt.plot(history, label="Price History", color=palette[1])
-        plt.plot(trend, label="Trend", color=palette[2])
-        if predictions:
-            ax.axvline(history_pred.index[0])
-            plt.plot(history_pred, linestyle="dashed", color=palette[1])
-            plt.plot(trend_pred, linestyle="dashed", color=palette[2])
-        ax.legend(loc=1)
-            
-        ax = plt.subplot(3, 1, 2)
-        plt.plot(history - trend, label="Price History without Trend", color=palette[3])
-        plt.plot(weekly, label="Weekly Pattern", color=palette[4])
-        if predictions:
-            ax.axvline(history_pred.index[0])
-            plt.plot(history_pred - trend_pred, linestyle="dashed", color=palette[3])
-            plt.plot(weekly_pred, linestyle="dashed", color=palette[4])
-        ax.set_ylim([-100, 100])
-        ax.legend(loc=1)
-    
-        ax = plt.subplot(3, 1, 3)
-        plt.plot(res, label="Residual", color=palette[5])
-        if predictions:
-            ax.axvline(history_pred.index[0])
-            plt.plot(res_pred, linestyle="dashed", color=palette[5])
-        ax.set_ylim([-100, 100])
-        ax.legend(loc=1)
-    
-        #the statsmodels module does it like this:
-        #import statsmodels.api as sm
-        #res = sm.tsa.seasonal_decompose(history, freq=7*24)
-        #res.plot()
-        #plt.show()
-    
-        #show plots
-        plt.show()
-    
 if __name__ == "__main__":
     #usage samples
-    #Predictions().predict_station(
-    #    Database().find_stations(place="Strausberg").index[0]
-    #)
     n = 10
     stations = Database().find_stations(active_after=datetime(2017, 3, 1, 0, 0, 0, 0, pytz.utc), active_before=datetime(2014, 7, 1, 0, 0, 0, 0, pytz.utc))
     print("selecting %d out of %d valid gas stations" % (n, len(stations)))

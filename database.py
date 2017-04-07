@@ -105,7 +105,7 @@ class Database:
         #create pandas dataframe
         return pd.read_sql(query.statement, self.connection).set_index("id")
         
-    def find_price_history(self, stids, start=pytz.utc.localize(datetime.utcnow()) - timedelta(days=14), end=pytz.utc.localize(datetime.utcnow())):
+    def find_price_history(self, stids, start=datetime(2014, 7, 1, 0, 0, 0, 0, pytz.utc), end=pytz.utc.localize(datetime.utcnow())):
         """
         Create a pandas dataframe containing all price changes with the given
         properties.
@@ -113,7 +113,7 @@ class Database:
         Keyword arguments:
         stids -- an iterable containing the ids of the gas stations
         start -- the first update time to include in the price history (default
-        datetime.now() - timedelta(days=14))
+        datetime(2014, 7, 1, 0, 0, 0, 0, pytz.utc))
         end -- the last update time to include in the price history (default
         datetime.now())
 
@@ -141,7 +141,7 @@ class Database:
             df["date"] = [t.astimezone(pytz.utc) for t in pd.to_datetime(df["date"], utc=True)]
         return df.set_index("date")
         
-    def find_price_hourly_history(self, stid, start=pytz.utc.localize(datetime.utcnow()) - timedelta(days=14), end=pytz.utc.localize(datetime.utcnow()), fuel_type="diesel"):
+    def find_price_hourly_history(self, stid, start=datetime(2014, 7, 1, 0, 0, 0, 0, pytz.utc), end=pytz.utc.localize(datetime.utcnow()), fuel_type="diesel"):
         """
         Create a pandas series containing the hourly price at a given gas
         station.
@@ -149,7 +149,7 @@ class Database:
         Keyword arguments:
         stid -- the id of a gas stations
         start -- the first update time to include in the price history (default
-        datetime.now() - timedelta(days=14))
+        datetime(2014, 7, 1, 0, 0, 0, 0, pytz.utc))
         end -- the last update time to include in the price history (default
         datetime.now())
         fuel_type -- the type of fuel to find prices for (default "diesel")
@@ -162,7 +162,7 @@ class Database:
         history_compressed = history_compressed[history_compressed > 0]
         
         #get opening price from database
-        current_price = self.find_prices([stid], time=start, fuel_types=[fuel_type])[fuel_type][0]
+        current_price = self.find_prices([stid], time=start, fuel_types=[fuel_type]).iloc[0][fuel_type]
 
         #uncompress price data
         index_compressed = 0
