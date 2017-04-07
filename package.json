@@ -1,0 +1,20 @@
+{
+  "name": "gasprices",
+  "version": "0.0.0",
+  "description": "My capstone project for The Data Incubator Reply",
+  "main": "webapp.py",
+  "scripts": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/stoman/gasprices.git"
+  },
+  "author": "Stefan Toman <git@stoman.de>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/stoman/gasprices/issues"
+  },
+  "homepage": "https://github.com/stoman/gasprices#readme",
+  "devDependencies": {
+    "bower": "^1.8.0"
+  }
+}

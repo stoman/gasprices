@@ -6,6 +6,10 @@ venv
 *.ini
 cache
 
+#packages
+node_modules
+static/bower_components
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
