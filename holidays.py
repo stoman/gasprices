@@ -2,12 +2,12 @@ from datetime import datetime, timedelta
 import os
 
 from ediblepickle import checkpoint
+from icalendar import Calendar
 import pytz
 import requests
 from retrying import retry
 from sklearn import base
 
-from icalendar import Calendar
 import pandas as pd
 
 
@@ -118,12 +118,13 @@ class HolidayTransformer(base.BaseEstimator, base.TransformerMixin):
         self.zipcode = zipcode
     
     def fit(self, X, y=None):
+        #lookup zipcode
+        self.state = zipcode_to_state(self.zipcode)
         return self
     
     def transform(self, X):
-        state = zipcode_to_state(self.zipcode)
         #What to do in case of lookup errors? We use a default value...
-        return holidays(X.index, state if state else "berlin")
+        return holidays(X.index, self.state if self.state else "berlin")
 
 if __name__ == "__main__":
     #test calls for Stuttgart (in a state with umlaut)

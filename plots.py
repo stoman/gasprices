@@ -5,7 +5,7 @@ import pytz
 from database import Database
 import matplotlib.pyplot as plt
 import pandas as pd
-from predictions import split_seasonal, predict_split, Predictions
+from predictions import split_trend, predict_split, Predictions
 import seaborn as sbn
 
 
@@ -114,68 +114,57 @@ class Plots:
         #show plot
         ax.legend(bbox_to_anchor=(1., .95))
 
-    def split(self, history, features, predictions=False, prediction_length=7*24, cv=True):
+    def split(self, history, predictions=False, prediction_length=7*24, cv=True, hyperparameters={}):
         """
         This function plots an overview over the seasonal split of a history of gas
         prices as computed by `predictions.split_seasonal`.
         
         Keyword arguments:
         history -- the time series to split up and visualize
-        features -- a pipeline to transform the features before predicting them
         predictions -- whether to plot predictions too (default False)
         prediction_length -- number of time steps to predict. This is only
         effective if `predictions` is set to `True` (default 4*7*24)
         cv -- whether to predict data that is known and can be cross-validated
         (default True)   
+        hyperparameters -- values used for the prediction model (default {})
         """
         #split price history
-        trend, weekly, res = split_seasonal(history)
+        trend, res = split_trend(history)
     
         #predict price history
         if predictions:
-            trend_pred, weekly_pred, res_pred = predict_split(
+            trend_pred, res_pred = predict_split(
                 history[:-prediction_length] if cv else history,
-                features,
-                prediction_length=prediction_length
+                prediction_length=prediction_length,
+                hyperparameters=hyperparameters
             )
-            history_pred = trend_pred + weekly_pred + res_pred
+            history_pred = trend_pred + res_pred
             
             #print quality of predictions
             #prediction_error = history[-prediction_length:] - history_pred
             #print("Mean absolute prediction error %f" % prediction_error.abs().mean())
-    
+
         #run Dickey-Fuller test for debugging
-        #print("History Without Trend")
-        #test_stationary(history - trend)
         #print("Residual")
         #test_stationary(res)
     
         #plot given time series
-        palette = sbn.color_palette(n_colors=6)
-        ax = plt.subplot(3, 1, 1) 
-        plt.plot(history, label="Price History", color=palette[1])
-        plt.plot(trend, label="Trend", color=palette[2])
+        palette = sbn.hls_palette(3, l=.7)
+        palette_dark = sbn.hls_palette(3, l=.3)
+        ax = plt.subplot(2, 1, 1) 
+        plt.plot(history.iloc[-2*len(history_pred):], label="Price History", lw=3, color=palette_dark[0])
+        plt.plot(trend.iloc[-2*len(history_pred):], label="Trend", lw=3, color=palette_dark[1])
         if predictions:
             ax.axvline(history_pred.index[0])
-            plt.plot(history_pred, linestyle="dashed", color=palette[1])
-            plt.plot(trend_pred, linestyle="dashed", color=palette[2])
+            plt.plot(history_pred, lw=3, label="Price History (Prediction)", color=palette[0])
+            plt.plot(trend_pred, lw=3, label="Trend (Prediction)", color=palette[1])
         ax.legend(loc=1)
             
-        ax = plt.subplot(3, 1, 2)
-        plt.plot(history - trend, label="Price History without Trend", color=palette[3])
-        plt.plot(weekly, label="Weekly Pattern", color=palette[4])
+        ax = plt.subplot(2, 1, 2)
+        plt.plot(res.iloc[-2*len(history_pred):], label="History Without Trend", lw=3, color=palette_dark[2])
         if predictions:
             ax.axvline(history_pred.index[0])
-            plt.plot(history_pred - trend_pred, linestyle="dashed", color=palette[3])
-            plt.plot(weekly_pred, linestyle="dashed", color=palette[4])
-        ax.set_ylim([-100, 100])
-        ax.legend(loc=1)
-    
-        ax = plt.subplot(3, 1, 3)
-        plt.plot(res, label="Residual", color=palette[5])
-        if predictions:
-            ax.axvline(history_pred.index[0])
-            plt.plot(res_pred, linestyle="dashed", color=palette[5])
+            plt.plot(res_pred, label="History Without Trend (Prediction)", lw=3, color=palette[2])
         ax.set_ylim([-100, 100])
         ax.legend(loc=1)
     
@@ -201,14 +190,13 @@ if __name__ == "__main__":
     )
     
     #plot seasonal split
-    db = Database()
-    station = db.find_stations(place="Strausberg")
-    history = db.find_price_hourly_history(station.index[0])
+    station = database.find_stations(place="Strausberg")
+    history = database.find_price_hourly_history(station.index[0])
     plots.split(
         history,
-        Predictions().get_feature_pipeline(zipcode=station.iloc[0]["post_code"]),
         predictions=True,
-        cv=True
+        cv=True,
+        hyperparameters={"zipcode": station.iloc[0]["post_code"]}
     )
     
     #show plots

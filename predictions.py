@@ -1,54 +1,53 @@
 from datetime import datetime, timedelta
 import multiprocessing
-from pickletools import optimize
 
 from numpy.random import randint
 import pytz
 from sklearn import base
+from sklearn.ensemble.forest import RandomForestRegressor
 from sklearn.feature_extraction import DictVectorizer
-from sklearn.gaussian_process.kernels import Hyperparameter
-from sklearn.linear_model import LassoCV, LinearRegression
-from sklearn.metrics.regression import r2_score
 from sklearn.pipeline import Pipeline, FeatureUnion
-from sklearn.preprocessing import PolynomialFeatures, FunctionTransformer
-from statsmodels.tsa.arima_model import ARMA, AR
-from statsmodels.tsa.stattools import adfuller, acf, pacf
+from statsmodels.genmod.cov_struct import Autoregressive
+from statsmodels.tsa.stattools import adfuller
 
 from database import Database
 from holidays import HolidayTransformer
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sbn
-from sklearn.ensemble.forest import RandomForestRegressor
 
 
 sbn.set(font_scale=1.5)
 
 #set default parameters
 default_hyperparameters = {
-    "p": 2*24,
-    "q": 2*24,
-    "featureset": ["ar", "ma", "time", "holidays"]
+    "p": list(range(1, 5)) + list(range(20, 30)),#number of autoregressive features
+    "q": list(range(1, 5)),#number of moving average features
+    "r": 4*7*24,#size of history for predicting the residual
+    "featureset_trend": ["ar", "ma", "time", "holidays"],
+    "featureset_res": ["time", "holidays"],
+    "zipcode": 15370#default zipcode is none is found
 }
 
-def predict_split(history, features, prediction_length=7*24, hyperparameters={}):
+def predict_split(history, prediction_length=7*24, hyperparameters={}):
     """
     This function predicts a time series of gas prices by splitting it into a
-    trend, a weekly pattern, and a residual and then applying a feature
-    pipeline and predicting each of them individually.
+    tren and a residual and then applying a feature pipeline and predicting
+    each of them individually.
 
     Keyword arguments:
     history -- the time series to split up
-    features -- a pipeline to transform the features before predicting them
     prediction_length -- the number of time steps to predict (default 7*24)
     hyperparameters -- values used for the prediction model (default {}) 
 
     Return value:
-    3 time series predicted: trend, weekly pattern, and residual
+    2 time series predicted: trend and residual
     """
+    #extract parameters
+    r = hyperparameters["r"] if "r" in hyperparameters else default_hyperparameters["r"]
+
     #split data
-    trend, weekly, res = split_seasonal(history)
+    trend, res = split_trend(history)
     
     #create index for prediction time series
     index_pred = pd.date_range(
@@ -58,69 +57,49 @@ def predict_split(history, features, prediction_length=7*24, hyperparameters={})
         tz=pytz.utc
     )
     
-    #compute weekly prediction
-    weekly_pred = pd.Series(index=index_pred)
-    length_week = 7*24
-    for i in range(length_week):
-        weekly_pred[i::length_week] = weekly[-length_week + i]
-
-    #Analyze trend
-    #trend_shift = (trend - trend.shift(1)).fillna(0.)
-    #print("Shifted Trend")
-    #test_stationary(trend_shift)
-    #plot acf to debug
-    #plt.plot(acf(trend_shift))
-    #plt.show()
-
     #predict the trend    
-    trend_pred = predict_ts((trend - trend.shift(1)).fillna(0.), features, index_pred, hyperparameters=hyperparameters).cumsum() + trend.iloc[-1]
-
-    #alternative: using AR from statsmodels    
-    #trend_model = AR(trend_shift)
-    #trend_results = trend_model.fit(disp=-1, maxlag=p)
-    #trend_res = trend_results.predict(len(trend), len(trend) + prediction_length)
-    #trend_pred = trend_res.cumsum() + trend[-1]
+    trend_pred = predict_ts(
+        (trend - trend.shift(1)).fillna(0.),
+        get_feature_pipeline("trend", hyperparameters),
+        index_pred,
+        hyperparameters=hyperparameters
+    ).cumsum() + trend.iloc[-1]
     
     #compute residual prediction
-    res_pred = predict_ts(res, features, index_pred, hyperparameters=hyperparameters)
-    
-    #alternative: set zero
-    #res_pred = pd.Series(index=trend_pred.index).fillna(0.)
-    
+    res_pred = predict_ts(
+        res.iloc[-r:],
+        get_feature_pipeline("res", hyperparameters),
+        index_pred,
+        hyperparameters=hyperparameters
+    )
+        
     #alternative: using AR from statsmodels    
     #res_model = AR(res)
     #res_results = res_model.fit(disp=-1, maxlag=p)
     #res_pred = res_results.predict(len(res), len(res) + prediction_length)
 
     #return result
-    return trend_pred, weekly_pred, res_pred
+    return trend_pred, res_pred
 
-def split_seasonal(history):
+def split_trend(history):
     """
-    This function splits a time series of gas prices into a trend, a weekly
-    pattern, and a residual. The three returned time series sum up to the
-    input time series.
+    This function splits a time series of gas prices into a trend and a
+    residual. The two returned time series sum up to the input time series.
 
     Keyword arguments:
     history -- the time series to split up
 
     Return value:
-    a tuple of three time series: trend, weekly, and residual
+    a tuple of two time series: trend and residual
     """
     #compute trend
     length_week = 7*24
     trend = history.rolling(window=length_week, min_periods=1).mean()
     
-    #compute the weekly changes
-    weekly = pd.Series()
-    for i in range(length_week):
-        weekly = weekly.append((history - trend)[i::length_week].rolling(window=5, min_periods=1).median() / 1000)
-    weekly.sort_index(inplace=True)
-       
     #compute residual
-    res = history - trend - weekly
+    res = history - trend
     
-    return trend, weekly, res
+    return trend, res
 
 def test_stationary(ts):
     """
@@ -170,11 +149,26 @@ class MovingAverage(base.BaseEstimator, base.TransformerMixin):
     
     def transform(self, X):
         df = pd.DataFrame({"ma%05d" % 1: X["lag%05d" % 1]}, index=X.index)
-        for i in range(2, len(X.columns) + 1):
-            df["ma%05d" % i] = df["ma%05d" % (i - 1)] * (i - 1) / i + X["lag%05d" % i] / i
+        for i in self.q:
+            if i > 1:
+                df["ma%05d" % i] = df["ma%05d" % (i - 1)] * (i - 1) / i + X["lag%05d" % i] / i
         return df
 
-def one_cv_step(i, fold, prediction_length, history, pipeline):
+class Autoregressive(base.BaseEstimator, base.TransformerMixin):
+    """
+    An transformer that extracts autoregressive features. It assumes that the
+    input is given as a pandas dataframe with columns lag00001, lag00002, ...
+    """
+    def __init__(self, p):
+        self.p = p
+        
+    def fit(self, X, y):
+        return self
+    
+    def transform(self, X):
+        return X[["lag%05d" % i for i in self.p]]
+
+def one_cv_step(i, fold, prediction_length, history, hyperparameters):
     """
     A function for cross-validating the predictions. Can be pickled and used
     within multiprocessing.
@@ -184,7 +178,6 @@ def one_cv_step(i, fold, prediction_length, history, pipeline):
     fold -- total number of chunks
     prediction_length -- the number of time steps to predict in each prediction
     history -- the history of prices
-    features -- a pipeline creating additional features to use while predicting
     
     Return value:
     a tuple of the mean absolute error of the prediction, the mean absolute
@@ -194,8 +187,8 @@ def one_cv_step(i, fold, prediction_length, history, pipeline):
     print("CV fold %d of %d" %(fold - i + 1, fold))
     predictions = predict(
         history.iloc[:-i*prediction_length-1],
-        pipeline,
-        prediction_length=prediction_length
+        prediction_length=prediction_length,
+        hyperparameters=hyperparameters
     )
     
     #compute errors
@@ -208,13 +201,12 @@ def one_cv_step(i, fold, prediction_length, history, pipeline):
     )
     return ret
 
-def predict(history, features, prediction_length=7*24, hyperparameters={}):
+def predict(history, prediction_length=7*24, hyperparameters={}):
     """
     This function predicts a time series of gas prices.
 
     Keyword arguments:
     history -- the time series to split up
-    features -- a pipeline to transform the features before predicting them
     prediction_length -- the number of time steps to predict (default 7*24)
     hyperparameters -- values used for the prediction model (default {}) 
 
@@ -222,8 +214,12 @@ def predict(history, features, prediction_length=7*24, hyperparameters={}):
     the predicted time series
     """
     #compute predictions of the seasonal split and sum up
-    trend_pred, weekly_pred, res_pred = predict_split(history, features, prediction_length, hyperparameters=hyperparameters)
-    return trend_pred + weekly_pred + res_pred     
+    trend_pred, res_pred = predict_split(
+        history,
+        prediction_length,
+        hyperparameters=hyperparameters
+    )
+    return trend_pred + res_pred     
 
 def predict_ts(ts, features, index_pred, hyperparameters={}):
     """
@@ -240,10 +236,12 @@ def predict_ts(ts, features, index_pred, hyperparameters={}):
     """
     #extract parameters
     p = hyperparameters["p"] if "p" in hyperparameters else default_hyperparameters["p"]
+    q = hyperparameters["q"] if "q" in hyperparameters else default_hyperparameters["q"]
     
     #shift and lag ts
-    X = pd.DataFrame({"lag%05d" % i: ts.shift(i) for i in range(1, p + 1)[::-1]}).iloc[p:]
-    y = ts.iloc[p:]
+    X = pd.DataFrame({"lag%05d" % i: ts.shift(i) for i in p + q})
+    y = ts[pd.notnull(X).all(axis=1)]
+    X = X[pd.notnull(X).all(axis=1)]
     
     #create pipeline
     pipeline = Pipeline([
@@ -255,10 +253,42 @@ def predict_ts(ts, features, index_pred, hyperparameters={}):
     #predict data
     ts_all = [y for y in ts]#remove index
     for t in index_pred:
-        Xt = pd.DataFrame({"lag%05d" % i: ts_all[-i] for i in range(1, p + 1)[::-1]}, index=[t])
+        Xt = pd.DataFrame({"lag%05d" % i: ts_all[-i] for i in p + q}, index=[t])
         ts_all.append(pipeline.predict(Xt)[0])
     ts_pred = pd.Series(ts_all[-len(index_pred):], index=index_pred)
     return ts_pred
+
+def get_feature_pipeline(pipeline_type="trend", hyperparameters={}):
+    """
+    Create a pipeline assembling all features that we use for predicting
+    gas prices from a shifted time series.
+    
+    Keyword arguments:
+    pipeline_type -- the pipeline features to choose, use `featureset_%` from
+    hyperparameters (default "trend")
+    hyperparameters -- values used for the prediction model (default {})
+    
+    Return value:
+    the sklearn feature pipeline 
+    """
+    #extract parameters
+    featureset = hyperparameters["featureset_%s" % pipeline_type] if "featureset_%s" % pipeline_type in hyperparameters else default_hyperparameters["featureset_%s" % pipeline_type]
+    p = hyperparameters["p"] if "p" in hyperparameters else default_hyperparameters["p"]
+    q = hyperparameters["q"] if "q" in hyperparameters else default_hyperparameters["q"]
+    zipcode = hyperparameters["zipcode"] if "zipcode" in hyperparameters else default_hyperparameters["zipcode"]
+    
+    #assemble pipeline
+    pipeline = []
+    if "ar" in featureset:
+        pipeline.append(("ar", Autoregressive(p)))
+    if "ma" in featureset:
+        pipeline.append(("ma", MovingAverage(q)))
+    if "time" in featureset:
+        pipeline.append(("time", DateFeatures()))
+    if "holidays" in featureset:
+        pipeline.append(("holidays", HolidayTransformer(zipcode=zipcode)))
+    return FeatureUnion(pipeline)
+
 
 class Predictions:
     """
@@ -278,10 +308,10 @@ class Predictions:
         station = self.db.find_stations(stids=[stid])
         self.plot_split_seasonal(
             history,
-            self.get_feature_pipeline(zipcode=station.iloc[0]["post_code"]),
             predictions=True,
             cv=True,
-            prediction_length=prediction_length
+            prediction_length=prediction_length,
+            hyperparameters={"zipcode": station.iloc[0]["post_code"]}
         ) 
         
     def cross_validation(self, stid, start=datetime(2014, 7, 1, 0, 0, 0, 0, pytz.utc), end=datetime(2017, 3, 19, 0, 0, 0, 0, pytz.utc), fuel_type="diesel", prediction_length=7*24, fold=52):
@@ -289,10 +319,9 @@ class Predictions:
         history = self.db.find_price_hourly_history(stid, start=start, end=end, fuel_type=fuel_type)
         fold = min(fold, len(history) // prediction_length - 1)
         station = self.db.find_stations(stids=[stid])
-        pipeline = self.get_feature_pipeline(zipcode=station.iloc[0]["post_code"])
         
         #compute errors for some past time frames
-        errors = multiprocessing.Pool().starmap(one_cv_step, [(i, fold, prediction_length, history, pipeline) for i in range(fold, 0, -1)])
+        errors = multiprocessing.Pool().starmap(one_cv_step, [(i, fold, prediction_length, history, {"zipcode": station.iloc[0]["post_code"]}) for i in range(fold, 0, -1)])
         abs_errors, naive_error, mse, shift24, index = zip(*errors)    
 
         #create dataframe to return
@@ -305,36 +334,7 @@ class Predictions:
             "r2 (last)": [1. - a / n if not n == 0 else -1 for a, n in zip(abs_errors, naive_error)],
             "r2 (shift 24)": [1. - a / n if not n == 0 else -1 for a, n in zip(abs_errors, shift24)],
         })
-    
-    def get_feature_pipeline(self, zipcode, hyperparameters={}):
-        """
-        Create a pipeline assembling all features that we use for predicting
-        gas prices from a shifted time series.
-        
-        Keyword arguments:
-        zipcode -- the zipcode of the gas station (needed for finding public
-        holidays)
-        hyperparameters -- values used for the prediction model (default {})
-        
-        Return value:
-        the sklearn feature pipeline 
-        """
-        #extract parameters
-        featureset = hyperparameters["featureset"] if "featureset" in hyperparameters else default_hyperparameters["featureset"]
-        q = hyperparameters["q"] if "q" in hyperparameters else default_hyperparameters["q"]
-        
-        #assemble pipeline
-        pipeline = []
-        if "ar" in featureset:
-            pipeline.append(("ar", FunctionTransformer()))#identity function for first p features
-        if "ma" in featureset:
-            pipeline.append(("ma", MovingAverage(q)))
-        if "time" in featureset:
-            pipeline.append(("time", DateFeatures()))
-        if "holidays" in featureset:
-            pipeline.append(("holidays", HolidayTransformer(zipcode=zipcode)))
-        return FeatureUnion(pipeline)
-            
+                
 if __name__ == "__main__":
     #usage samples
     n = 10
