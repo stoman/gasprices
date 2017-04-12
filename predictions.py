@@ -20,6 +20,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sbn
+from sklearn.ensemble.forest import RandomForestRegressor
 
 
 sbn.set(font_scale=1.5)
@@ -113,7 +114,7 @@ def split_seasonal(history):
     #compute the weekly changes
     weekly = pd.Series()
     for i in range(length_week):
-        weekly = weekly.append((history - trend)[i::length_week].rolling(window=5, min_periods=1).median())
+        weekly = weekly.append((history - trend)[i::length_week].rolling(window=5, min_periods=1).median() / 1000)
     weekly.sort_index(inplace=True)
        
     #compute residual
@@ -147,7 +148,7 @@ class DateFeatures(base.BaseEstimator, base.TransformerMixin):
         r = {}
         r.update({"hour%d" % i: t.hour == i for i in range(24)})
         r.update({"dow%d" % i: t.dayofweek == i for i in range(7)})
-        #r.update({"week%d" % i: t.weekofyear == i for i in range(53)})
+        r.update({"month%d" % i: t.month == i for i in range(1, 13)})
         return r
 
     def transform(self, X):
@@ -247,7 +248,8 @@ def predict_ts(ts, features, index_pred, hyperparameters={}):
     #create pipeline
     pipeline = Pipeline([
         ("features", features),
-        ("regressor", LinearRegression(normalize=True))
+        #("regressor", LinearRegression(normalize=True))
+        ("regressor", RandomForestRegressor())
     ]).fit(X, y)
 
     #predict data

@@ -1,0 +1,9 @@
+.section.predictions {
+	background-color: #D1DBBD;
+}
+
+.line {
+  fill: none;
+  stroke: steelblue;
+  stroke-width: 2px;
+}

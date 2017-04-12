@@ -1,18 +1,13 @@
 function loadPredictions(stid) {
 	$(".section.predictions .content").hide();
 	$(".section.predictions .loading").show();
-	$.ajax({
-		url: "/api/predictions/" + stid
-	}).done(function(response) {
-		$(".section.predictions .content").html(response).show();
-		$(".section.predictions .loading").hide();
-	});
+	window.location.href = "/predictions/" + stid;
 }
 
 $(document).ready(function() {
 	//load fullpage objects
 	$('.fullpage').fullpage({
-		anchors: ["search", "predictions"]
+		anchors: ["search", "imprint"]
 	});
 	
 	//create gas station typeahead
@@ -40,7 +35,6 @@ $(document).ready(function() {
       }
 	});
 	$('.typeahead').on('typeahead:selected', function (event, station) {
-      $.fn.fullpage.moveTo('predictions');
       loadPredictions(station.id);
     });
 });

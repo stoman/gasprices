@@ -1,0 +1,29 @@
+.section.search {
+	background-color: #D1DBBD;
+}
+
+.section.search .twitter-typeahead {
+	width: 100%;
+	margin: 2em 0;
+}
+
+.section.search input {
+	width: 100%;
+	height: 2em;
+	font-size: x-large;
+}
+
+.section.search .tt-menu {
+	background-color: #ffffff;
+	border: 1px solid #588C7E;
+	border-radius-bottom: 6px;
+	width: 100%;
+}
+
+.section.search .tt-suggestion {
+	padding: 0 1em;
+}
+
+.section.imprint {
+	background-color: #91AA9D;
+}

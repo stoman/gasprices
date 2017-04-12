@@ -1,3 +1,17 @@
-<h1>Predictions for {{station.brand}} {{station.name}}</h1>
+{% extends "base.html" %}
+{% block content %}
+  <div class="fullpage">
+	<div class="section predictions">
+	  <div class="container">
+        <h1>Predictions for {{station.brand}} {{station.name}}</h1>
+        <img class="map" src="https://maps.googleapis.com/maps/api/staticmap?center={{station.lat}},{{station.lng}}&markers={{station.lat}},{{station.lng}}&zoom=11&maptype=roadmap&size=585x100&scale=2&key={{apikey}}" />
+        <svg class="chart" />
+	  </div>
+	</div>
+  </div>
+{% endblock %}
 
-<img class="map" src="https://maps.googleapis.com/maps/api/staticmap?center={{station.lat}},{{station.lng}}&markers={{station.lat}},{{station.lng}}&zoom=14&maptype=roadmap&size=585x100&scale=2&key={{apikey}}" />
+{%block includes %}
+  <script src="/static/predictions.js"></script>
+  <link rel="stylesheet" href="/static/predictions.css" type="text/css" />
+{% endblock %}

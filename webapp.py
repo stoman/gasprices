@@ -1,9 +1,11 @@
+from configparser import SafeConfigParser
+from datetime import datetime, timedelta
 import json
 
 from flask import Flask, render_template
+import pytz
 
 from database import Database
-from configparser import SafeConfigParser
 
 
 #create flask app
@@ -15,7 +17,7 @@ def index():
     return render_template("index.html")
 
 #predictions page
-@app.route('/api/predictions/<stid>')
+@app.route('/predictions/<stid>')
 def predictions(stid):
     config = SafeConfigParser()
     config.read("config.ini")
@@ -28,6 +30,19 @@ def predictions(stid):
 @app.route("/api/stations")
 def stations():
     data = Database().find_stations().reset_index()[["id", "name", "brand", "street", "place", "post_code"]]
+    data_dict = data.to_dict(orient="records")
+    return json.dumps(data_dict)
+
+#give price history
+@app.route("/api/prices/<stid>")
+def prices(stid):
+    data = Database().find_price_hourly_history(
+        stid,
+        start=pytz.utc.localize(datetime.utcnow()) - timedelta(days=30),
+        end=pytz.utc.localize(datetime.utcnow()) - timedelta(days=1)
+    ).reset_index()
+    data["index"] = data["index"].apply(lambda x: x.isoformat())
+    data.columns = ["date", "diesel"]
     data_dict = data.to_dict(orient="records")
     return json.dumps(data_dict)
 
